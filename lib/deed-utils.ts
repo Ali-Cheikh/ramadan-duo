@@ -171,21 +171,19 @@ export function calculateStreaks(logs: DailyLog[]): {
   let tummyStreakActive = true;
   let socialStreakActive = true;
 
-  // Start from today and go backwards
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  let currentCheckDate = new Date(today);
+  // CRITICAL FIX: Use app's date logic (respects 3:30 AM reset)
+  // Don't use browser's local date!
+  const todayAppDate = getTodayDateWithReset(); // "2026-02-18" when before 3:30 AM
+  let currentCheckDate = new Date(todayAppDate + 'T00:00:00Z');
   let logIndex = 0;
 
   // Check consecutive days going backwards
   while (logIndex < sortedLogs.length) {
     const log = sortedLogs[logIndex];
-    const logDate = new Date(log.log_date);
-    logDate.setHours(0, 0, 0, 0);
+    const logDate = new Date(log.log_date + 'T00:00:00Z');
     
     const expectedDateStr = currentCheckDate.toISOString().split('T')[0];
-    const logDateStr = logDate.toISOString().split('T')[0];
+    const logDateStr = log.log_date;
 
     // If this log matches the expected date
     if (logDateStr === expectedDateStr) {
@@ -242,7 +240,7 @@ export function calculateStreaks(logs: DailyLog[]): {
       }
 
       // Move to the previous day
-      currentCheckDate.setDate(currentCheckDate.getDate() - 1);
+      currentCheckDate.setUTCDate(currentCheckDate.getUTCDate() - 1);
       logIndex++;
     } else if (logDate.getTime() < currentCheckDate.getTime()) {
       // Gap in logs - streak is broken

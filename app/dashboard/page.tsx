@@ -131,15 +131,6 @@ export default function DashboardPage() {
     if (!authLoading && !user) {
       router.push('/login');
     } else if (user) {
-      // Log timezone info for debugging
-      const now = new Date();
-      const gmt1Time = new Date(now.getTime() + (60 * 60 * 1000));
-      const today = getTodayDate();
-      console.log('🕐 Current browser time:', now.toISOString());
-      console.log('🇹🇳 Tunisia time (GMT+1):', gmt1Time.toISOString());
-      console.log('📅 App considers today as:', today);
-      console.log('⏰ Daily reset: 3:30 AM GMT+1');
-      
       loadProfile();
       loadTodayLog();
       loadStreaks();
