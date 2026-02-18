@@ -4,7 +4,7 @@
   ## Overview
   Complete database setup for Ramadan Quest habit tracker app with:
   - Tunisia-focused regional tracking (24 regions)
-  - GMT+1 timezone support with 2 AM daily reset
+  - GMT+1 timezone support with 3:30 AM daily reset
   - Daily deed tracking with month-long leaderboards
   
   ## Tables
@@ -21,7 +21,7 @@
   - `updated_at` (timestamptz) - Last profile update timestamp
   
   ### `daily_logs`
-  Daily deed tracking (resets at 2 AM GMT+1):
+  Daily deed tracking (resets at 3:30 AM GMT+1):
   - `id` (uuid, primary key) - Unique log identifier
   - `user_id` (uuid, foreign key) - References profiles.id
   - `log_date` (date) - The date for this log (GMT+1)
@@ -315,7 +315,7 @@ CREATE TRIGGER set_updated_at_daily_stats
 -- Kairouan
 -- 
 -- Features:
--- ✓ Daily deed tracking (resets at 2 AM GMT+1)
+-- ✓ Daily deed tracking (resets at 3:30 AM GMT+1)
 -- ✓ Month-long leaderboards
 -- ✓ Regional filtering (24 Tunisia regions)
 -- ✓ Automatic profile creation on signup

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useLanguage } from '@/lib/language-context';
+import { useTranslation } from '@/lib/use-translation';
 import { supabase, DailyLog, Profile } from '@/lib/supabase';
 import { ProgressRing } from '@/components/dashboard/progress-ring';
 import { DeedButton } from '@/components/dashboard/deed-button';
@@ -25,6 +27,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
+  const { language, setLanguage } = useLanguage();
+  const { t } = useTranslation();
   const router = useRouter();
   const [deeds, setDeeds] = useState<Record<DeedKey, boolean>>({
     prayer_five: false,
@@ -72,6 +76,35 @@ export default function DashboardPage() {
     }
   };
 
+  // Translation helpers for deed categories and labels
+  const getCategoryName = (category: DeedCategory): string => {
+    const categoryMap: Record<DeedCategory, string> = {
+      prayer: t('deeds.prayer'),
+      iman: t('deeds.iman'),
+      tummy: t('deeds.tummy'),
+      social: t('deeds.social'),
+    };
+    return categoryMap[category];
+  };
+
+  const getDeedLabel = (deedKey: DeedKey): string => {
+    const deedMap: Record<DeedKey, string> = {
+      prayer_five: t('deeds.prayerFive'),
+      prayer_fajr_masjid: t('deeds.prayerFajrMasjid'),
+      prayer_taraweeh: t('deeds.prayerTaraweeh'),
+      iman_quran: t('deeds.imanQuran'),
+      iman_dhikr: t('deeds.imanDhikr'),
+      iman_dua: t('deeds.imanDua'),
+      tummy_suhoor: t('deeds.tummySuhoor'),
+      tummy_iftar: t('deeds.tummyIftar'),
+      tummy_fast: t('deeds.tummyFast'),
+      social_charity: t('deeds.socialCharity'),
+      social_family: t('deeds.socialFamily'),
+      social_workout: t('deeds.socialWorkout'),
+    };
+    return deedMap[deedKey];
+  };
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -98,6 +131,15 @@ export default function DashboardPage() {
     if (!authLoading && !user) {
       router.push('/login');
     } else if (user) {
+      // Log timezone info for debugging
+      const now = new Date();
+      const gmt1Time = new Date(now.getTime() + (60 * 60 * 1000));
+      const today = getTodayDate();
+      console.log('🕐 Current browser time:', now.toISOString());
+      console.log('🇹🇳 Tunisia time (GMT+1):', gmt1Time.toISOString());
+      console.log('📅 App considers today as:', today);
+      console.log('⏰ Daily reset: 3:30 AM GMT+1');
+      
       loadProfile();
       loadTodayLog();
       loadStreaks();
@@ -130,6 +172,11 @@ export default function DashboardPage() {
       .eq('user_id', user.id)
       .order('log_date', { ascending: false })
       .limit(100);
+
+    if (error) {
+      console.error('Error loading streaks:', error);
+      return;
+    }
 
     if (data) {
       const calculatedStreaks = calculateStreaks(data as DailyLog[]);
@@ -270,14 +317,14 @@ export default function DashboardPage() {
                       className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm"
                     >
                       <User className="w-4 h-4" />
-                      Profile Settings
+                      {t('dashboard.profileSettings')}
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
                     <button
-                      className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-gray-500 text-sm"
-                      disabled
+                      onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm"
                     >
-                      🌐 Language (Soon)
+                      🌐 {language === 'en' ? 'العربية' : 'English'}
                     </button>
                   </div>
                 )}
@@ -297,8 +344,8 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       <Flame className="w-6 h-6 text-amber-600" />
                       <div>
-                        <div className="text-xs text-amber-700 font-medium">Daily Streak</div>
-                        <div className="text-xl font-bold text-amber-900">{streaks.dailyStreak} days</div>
+                        <div className="text-xs text-amber-700 font-medium">{t('dashboard.dailyStreak')}</div>
+                        <div className="text-xl font-bold text-amber-900">{streaks.dailyStreak} {t('dashboard.days')}</div>
                       </div>
                     </div>
                   </CardContent>
@@ -309,8 +356,8 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-6 h-6 text-emerald-600" />
                       <div>
-                        <div className="text-xs text-emerald-700 font-medium">Prayer Streak</div>
-                        <div className="text-xl font-bold text-emerald-900">{streaks.prayerStreak} days</div>
+                        <div className="text-xs text-emerald-700 font-medium">{t('dashboard.perfectStreak')}</div>
+                        <div className="text-xl font-bold text-emerald-900">{streaks.prayerStreak} {t('dashboard.days')}</div>
                       </div>
                     </div>
                   </CardContent>
@@ -322,7 +369,7 @@ export default function DashboardPage() {
                   <CardHeader className="pb-2 pt-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <span>{CATEGORY_INFO[category as DeedCategory].icon}</span>
-                      <span>{CATEGORY_INFO[category as DeedCategory].name}</span>
+                      <span>{getCategoryName(category as DeedCategory)}</span>
                       <span className="ml-auto text-xs font-normal text-gray-500">
                         {categoryDeeds.filter(d => deeds[d.key]).length}/3
                       </span>
@@ -332,7 +379,7 @@ export default function DashboardPage() {
                     {categoryDeeds.map(deed => (
                       <DeedButton
                         key={deed.key}
-                        label={deed.label}
+                        label={getDeedLabel(deed.key)}
                         emoji={deed.icon}
                         completed={deeds[deed.key]}
                         onClick={() => toggleDeed(deed.key)}
@@ -351,7 +398,7 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="w-6 h-6 text-amber-500" />
-                 Leaderboard
+                  {t('dashboard.leaderboard')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -366,14 +413,14 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="w-6 h-6 text-blue-500" />
-                  Friends
+                  {t('dashboard.friends')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-center py-12 text-gray-500">
                   <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium">Friends System</p>
-                  <p className="text-sm">Coming soon...</p>
+                  <p className="text-lg font-medium">{t('dashboard.friendsSystem')}</p>
+                  <p className="text-sm">{t('dashboard.comingSoon')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -385,14 +432,14 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Home className="w-6 h-6 text-purple-500" />
-                  Dashboard
+                  {t('dashboard.stats')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-center py-12 text-gray-500">
                   <Home className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium">Analytics Dashboard</p>
-                  <p className="text-sm">Stats and insights coming soon...</p>
+                  <p className="text-lg font-medium">{t('dashboard.analyticsDashboard')}</p>
+                  <p className="text-sm">{t('dashboard.statsAndInsights')}</p>
                 </div>
               </CardContent>
             </Card>
@@ -417,7 +464,7 @@ export default function DashboardPage() {
             }`}
           >
             <Target className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Tracker</span>
+            <span className="text-xs font-medium">{t('dashboard.tracker')}</span>
           </button>
 
           <button
@@ -429,7 +476,7 @@ export default function DashboardPage() {
             }`}
           >
             <Trophy className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Ranks</span>
+            <span className="text-xs font-medium">{t('dashboard.ranks')}</span>
           </button>
 
           <button
@@ -441,7 +488,7 @@ export default function DashboardPage() {
             }`}
           >
             <Users className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Friends</span>
+            <span className="text-xs font-medium">{t('dashboard.friends')}</span>
           </button>
 
           <button
@@ -453,7 +500,7 @@ export default function DashboardPage() {
             }`}
           >
             <Home className="w-6 h-6 mb-1" />
-            <span className="text-xs font-medium">Stats</span>
+            <span className="text-xs font-medium">{t('dashboard.stats')}</span>
           </button>
           </div>
         </div>

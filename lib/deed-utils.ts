@@ -1,5 +1,18 @@
 import { DailyLog } from './supabase';
 
+/**
+ * TIMEZONE & RESET LOGIC
+ * ======================
+ * - All dates use GMT+1 timezone (Tunisia/Central European Time)
+ * - Daily reset happens at 3:30 AM GMT+1
+ * - This means if it's 12:00 AM - 3:29 AM, you're still in "yesterday"
+ * - All streak calculations and date comparisons use this logic
+ * 
+ * Current time: If it's 11:50 PM on Feb 18, the app considers it Feb 18
+ *               If it's 2:00 AM on Feb 19, the app considers it Feb 18 (still)
+ *               If it's 3:30 AM on Feb 19, the app considers it Feb 19 (new day!)
+ */
+
 export type DeedKey =
   | 'prayer_five'
   | 'prayer_fajr_masjid'
@@ -48,44 +61,55 @@ export const CATEGORY_INFO = {
 // Get current date in GMT+1 (Tunisia timezone)
 export function getCurrentDateGMT1(): string {
   const now = new Date();
-  // Add 1 hour for GMT+1
+  // Convert to GMT+1 timezone
   const gmt1Time = new Date(now.getTime() + (60 * 60 * 1000));
   return gmt1Time.toISOString().split('T')[0];
 }
 
-// Get "today" considering 2 AM reset in GMT+1
-// A "day" runs from 2 AM to 2 AM (next day)
+// Get "today" considering 3:30 AM reset in GMT+1
+// A "day" runs from 3:30 AM to 3:30 AM (next day)
 export function getTodayDateWithReset(): string {
   const now = new Date();
+  // Convert to GMT+1 timezone by adding 1 hour
   const gmt1Time = new Date(now.getTime() + (60 * 60 * 1000));
   
-  const hour = gmt1Time.getHours();
+  const hour = gmt1Time.getUTCHours();
+  const minutes = gmt1Time.getUTCMinutes();
   
-  // If it's before 2 AM, we're still in "yesterday"
-  if (hour < 2) {
-    const yesterday = new Date(gmt1Time);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
+  // If it's before 3:30 AM GMT+1, we're still in "yesterday"
+  // Convert time to minutes for easier comparison
+  const currentTimeMinutes = hour * 60 + minutes;
+  const resetTimeMinutes = 3 * 60 + 30; // 3:30 AM = 210 minutes
+  
+  if (currentTimeMinutes < resetTimeMinutes) {
+    gmt1Time.setUTCDate(gmt1Time.getUTCDate() - 1);
   }
   
   return gmt1Time.toISOString().split('T')[0];
 }
 
-// Get time range for "today" (from 2 AM to 2 AM next day in GMT+1)
+// Get time range for "today" (from 3:30 AM to 3:30 AM next day in GMT+1)
 export function getTodayTimeRange() {
   const now = new Date();
+  // Convert to GMT+1 timezone
   const gmt1Time = new Date(now.getTime() + (60 * 60 * 1000));
   
-  const todayStart = new Date(gmt1Time);
-  todayStart.setHours(2, 0, 0, 0);
+  const hour = gmt1Time.getUTCHours();
+  const minutes = gmt1Time.getUTCMinutes();
+  const currentTimeMinutes = hour * 60 + minutes;
+  const resetTimeMinutes = 3 * 60 + 30; // 3:30 AM
   
-  // If current time is before 2 AM, "today" started yesterday at 2 AM
-  if (gmt1Time.getHours() < 2) {
-    todayStart.setDate(todayStart.getDate() - 1);
+  // Create today's reset time (3:30 AM GMT+1)
+  const todayStart = new Date(gmt1Time);
+  todayStart.setUTCHours(3, 30, 0, 0);
+  
+  // If current time is before 3:30 AM, "today" started yesterday at 3:30 AM
+  if (currentTimeMinutes < resetTimeMinutes) {
+    todayStart.setUTCDate(todayStart.getUTCDate() - 1);
   }
   
   const todayEnd = new Date(todayStart);
-  todayEnd.setDate(todayEnd.getDate() + 1);
+  todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
   
   return {
     start: todayStart.toISOString(),
@@ -127,6 +151,7 @@ export function calculateStreaks(logs: DailyLog[]): {
     };
   }
 
+  // Sort logs by date descending (most recent first)
   const sortedLogs = [...logs].sort((a, b) =>
     new Date(b.log_date).getTime() - new Date(a.log_date).getTime()
   );
@@ -139,57 +164,93 @@ export function calculateStreaks(logs: DailyLog[]): {
   let socialStreak = 0;
   let totalPoints = 0;
 
-  const today = getTodayDate();
-  let expectedDate = new Date(today);
+  // Track which streaks are still active
+  let perfectStreakActive = true;
+  let prayerStreakActive = true;
+  let imanStreakActive = true;
+  let tummyStreakActive = true;
+  let socialStreakActive = true;
 
-  for (const log of sortedLogs) {
+  // Start from today and go backwards
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let currentCheckDate = new Date(today);
+  let logIndex = 0;
+
+  // Check consecutive days going backwards
+  while (logIndex < sortedLogs.length) {
+    const log = sortedLogs[logIndex];
     const logDate = new Date(log.log_date);
-    const expectedDateStr = expectedDate.toISOString().split('T')[0];
-    const logDateStr = log.log_date;
+    logDate.setHours(0, 0, 0, 0);
+    
+    const expectedDateStr = currentCheckDate.toISOString().split('T')[0];
+    const logDateStr = logDate.toISOString().split('T')[0];
 
-    if (logDateStr !== expectedDateStr) {
+    // If this log matches the expected date
+    if (logDateStr === expectedDateStr) {
+      totalPoints += log.points_earned;
+
+      // Daily streak: any points earned
+      if (log.points_earned > 0) {
+        dailyStreak++;
+      } else {
+        // No points on this day, break the streak
+        break;
+      }
+
+      // Perfect streak: all 12 deeds
+      if (perfectStreakActive) {
+        if (log.points_earned === 12) {
+          perfectStreak++;
+        } else {
+          perfectStreakActive = false;
+        }
+      }
+
+      // Category streaks
+      if (prayerStreakActive) {
+        if (isCategoryComplete(log.deeds, 'prayer')) {
+          prayerStreak++;
+        } else {
+          prayerStreakActive = false;
+        }
+      }
+
+      if (imanStreakActive) {
+        if (isCategoryComplete(log.deeds, 'iman')) {
+          imanStreak++;
+        } else {
+          imanStreakActive = false;
+        }
+      }
+
+      if (tummyStreakActive) {
+        if (isCategoryComplete(log.deeds, 'tummy')) {
+          tummyStreak++;
+        } else {
+          tummyStreakActive = false;
+        }
+      }
+
+      if (socialStreakActive) {
+        if (isCategoryComplete(log.deeds, 'social')) {
+          socialStreak++;
+        } else {
+          socialStreakActive = false;
+        }
+      }
+
+      // Move to the previous day
+      currentCheckDate.setDate(currentCheckDate.getDate() - 1);
+      logIndex++;
+    } else if (logDate.getTime() < currentCheckDate.getTime()) {
+      // Gap in logs - streak is broken
       break;
-    }
-
-    totalPoints += log.points_earned;
-
-    if (log.points_earned > 0) {
-      dailyStreak++;
     } else {
-      break;
+      // Log is in the future? Skip it
+      logIndex++;
     }
-
-    if (log.points_earned === 12) {
-      perfectStreak++;
-    } else if (perfectStreak === 0) {
-      perfectStreak = 0;
-    }
-
-    if (isCategoryComplete(log.deeds, 'prayer')) {
-      prayerStreak++;
-    } else if (prayerStreak === 0) {
-      prayerStreak = 0;
-    }
-
-    if (isCategoryComplete(log.deeds, 'iman')) {
-      imanStreak++;
-    } else if (imanStreak === 0) {
-      imanStreak = 0;
-    }
-
-    if (isCategoryComplete(log.deeds, 'tummy')) {
-      tummyStreak++;
-    } else if (tummyStreak === 0) {
-      tummyStreak = 0;
-    }
-
-    if (isCategoryComplete(log.deeds, 'social')) {
-      socialStreak++;
-    } else if (socialStreak === 0) {
-      socialStreak = 0;
-    }
-
-    expectedDate.setDate(expectedDate.getDate() - 1);
   }
 
   return {

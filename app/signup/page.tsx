@@ -8,8 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Moon, Mail, Lock, User } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from '@/lib/use-translation';
+import { LanguageSwitcher } from '@/components/language-switcher';
 
 export default function SignupPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -65,13 +68,16 @@ export default function SignupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex justify-end mb-2">
+              <LanguageSwitcher />
+            </div>
             <form onSubmit={handleEmailSignup} className="space-y-4">
               <div className="space-y-2">
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                   <Input
                     type="text"
-                    placeholder="Display Name"
+                    placeholder={t('common.displayName')}
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     className="pl-10"
@@ -83,7 +89,7 @@ export default function SignupPage() {
                   <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                   <Input
                     type="email"
-                    placeholder="Email"
+                    placeholder={t('common.email')}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -115,14 +121,14 @@ export default function SignupPage() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                 disabled={loading}
               >
-                {loading ? 'Creating account...' : 'Create Account'}
+                {loading ? t('common.creatingAccount') : t('common.signup')}
               </Button>
             </form>
 
             <div className="text-center text-sm text-gray-600">
-              Already have an account?{' '}
+              {t('common.alreadyHaveAccount')}{' '}
               <Link href="/login" className="text-emerald-600 hover:text-emerald-700 font-semibold">
-                Sign in
+                {t('common.login')}
               </Link>
             </div>
           </CardContent>

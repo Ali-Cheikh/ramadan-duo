@@ -9,8 +9,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Moon, Mail, Lock } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from '@/lib/use-translation';
+import { LanguageSwitcher } from '@/components/language-switcher';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,17 +87,20 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-3xl font-bold text-emerald-900">Ramadan Quest</CardTitle>
           <CardDescription className="text-base">
-            Begin yourjourney this Ramadan
+            Begin your journey this Ramadan
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex justify-end pg-2">
+            <LanguageSwitcher />
+          </div>
           <form onSubmit={handleEmailLogin} className="space-y-4">
             <div className="space-y-2">
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <Input
                   type="email"
-                  placeholder="Email"
+                  placeholder={t('common.email')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -107,7 +113,7 @@ export default function LoginPage() {
                 <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <Input
                   type="password"
-                  placeholder="Password"
+                  placeholder={t('common.password')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -125,7 +131,7 @@ export default function LoginPage() {
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
               disabled={loading}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? t('common.signingIn') : t('common.login')}
             </Button>
           </form>
 
@@ -133,14 +139,14 @@ export default function LoginPage() {
             <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
               <DialogTrigger asChild>
                 <button className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
-                  Forgot password?
+                  {t('common.forgotPassword')}
                 </button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle>Reset Password</DialogTitle>
+                  <DialogTitle>{t('common.resetPassword')}</DialogTitle>
                   <DialogDescription>
-                    Enter your email address and we'll send you a link to reset your password.
+                    {t('common.resetPassword')}
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handlePasswordReset} className="space-y-4">
@@ -149,7 +155,7 @@ export default function LoginPage() {
                       <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                       <Input
                         type="email"
-                        placeholder="Email"
+                        placeholder={t('common.email')}
                         value={resetEmail}
                         onChange={(e) => setResetEmail(e.target.value)}
                         required
@@ -164,7 +170,7 @@ export default function LoginPage() {
                   )}
                   {resetSuccess && (
                     <div className="text-sm text-emerald-600 bg-emerald-50 p-3 rounded-md">
-                      Password reset email sent! Check your inbox.
+                      {t('common.passwordResetEmailSent')}
                     </div>
                   )}
                   <Button
@@ -172,7 +178,7 @@ export default function LoginPage() {
                     className="w-full bg-emerald-600 hover:bg-emerald-700"
                     disabled={resetLoading}
                   >
-                    {resetLoading ? 'Sending...' : 'Send Reset Link'}
+                    {resetLoading ? t('common.sending') : t('common.sendResetLink')}
                   </Button>
                 </form>
               </DialogContent>
@@ -182,9 +188,9 @@ export default function LoginPage() {
 
 
           <div className="text-center text-sm text-gray-600">
-            Don't have an account?{' '}
+            {t('common.dontHaveAccount')}{' '}
             <Link href="/signup" className="text-emerald-600 hover:text-emerald-700 font-semibold">
-              Sign up
+              {t('common.signup')}
             </Link>
           </div>
         </CardContent>
