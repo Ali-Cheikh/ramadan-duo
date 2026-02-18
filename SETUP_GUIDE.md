@@ -1,331 +1,194 @@
-# Ramadan Quest - Technical Setup Guide (International)
+# Setup Guide
 
-This document contains all technical steps required to adapt Ramadan Quest for users in the US, Europe, or any other country.
-
-## Overview
-
-The app is currently configured for Tunisia with:
-- 24 governorates
-- GMT+1 timezone
-- 2 AM daily reset
-
-To support US or European users, you will update regions, timezone handling, and default database values.
+How to deploy Ramadan Quest for your own country or community.
 
 ---
 
 ## Prerequisites
 
-- Node.js 18+ installed
-- Supabase account
-- Git installed
-- Code editor (VS Code recommended)
+- Node.js 18+
+- A [Supabase](https://supabase.com) account
+- Git
 
 ---
 
-## Step-by-Step Setup
-
-### 1. Clone and Install
+## 1. Clone and install
 
 ```bash
-git clone https://github.com/your-repo/ramadan-duo.git
-cd ramadan-duo
+git clone https://github.com/your-repo/ramadan-quest.git
+cd ramadan-quest
 npm install
 ```
 
-### 2. Configure Regions/States
+---
 
-Edit `lib/deed-utils.ts` and update the regions array:
+## 2. Configure your regions
 
-**Current (Tunisia):**
+Open `lib/deed-utils.ts` and replace the regions array with your own states, provinces, or governorates:
+
 ```typescript
-export const TUNISIA_REGIONS = [
-  'Tunis', 'Ariana', 'Ben Arous', 'Manouba',
-  'Bizerte', 'Nabeul', 'Zaghouan', 'Beja',
-  // ... 24 regions
+export const REGIONS = [
+  'Region A',
+  'Region B',
+  'Region C',
+  // ...
 ];
 ```
 
-**Change to your country:**
+The same `REGIONS` export is used by the profile selector and leaderboard filter, so you only need to change it in one place.
+
+---
+
+## 3. Set your timezone
+
+The daily reset is calculated in `lib/deed-utils.ts`. The current implementation uses a hardcoded UTC offset, which breaks during daylight saving time. Replace it with this DST-safe version:
+
 ```typescript
-export const YOUR_COUNTRY_REGIONS = [
-  'Region 1', 'Region 2', 'Region 3',
-  // ... list all your states/provinces/governorates
-];
-```
+// Set these two values for your deployment
+const TIMEZONE = 'Africa/Tunis'; // IANA timezone name — see full list below
+const RESET_HOUR = 2;            // Hour at which the day resets (24h format)
 
-**Then update the export:**
-```typescript
-// Find and replace all instances of:
-TUNISIA_REGIONS
-// with:
-YOUR_COUNTRY_REGIONS
-```
-
-### 3. Update Timezone Settings
-
-Edit `lib/deed-utils.ts` and find the timezone functions:
-
-**Current timezone (GMT+1):**
-```typescript
 export function getTodayDateWithReset(): string {
   const now = new Date();
-  const gmtPlus1 = new Date(now.getTime() + (1 * 60 * 60 * 1000));
-  
-  // Reset happens at 2 AM
-  if (gmtPlus1.getHours() < 2) {
-    gmtPlus1.setDate(gmtPlus1.getDate() - 1);
+
+  // Get the current hour in the target timezone — handles DST automatically
+  const hourInZone = parseInt(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: TIMEZONE,
+      hour: 'numeric',
+      hour12: false,
+    }).format(now),
+    10
+  );
+
+  // Get today's date string in the target timezone
+  const dateInZone = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE, // en-CA gives YYYY-MM-DD format
+  }).format(now);
+
+  // If we're before the reset hour, treat it as the previous day
+  if (hourInZone < RESET_HOUR) {
+    const d = new Date(dateInZone);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
   }
-  
-  return formatDate(gmtPlus1);
+
+  return dateInZone;
 }
 ```
 
-**Change to your timezone:**
-```typescript
-export function getTodayDateWithReset(): string {
-  const now = new Date();
-  
-  // Change timezone offset (hours * 60 * 60 * 1000)
-  // Examples:
-  // GMT+0: 0 * 60 * 60 * 1000
-  // GMT+1: 1 * 60 * 60 * 1000
-  // GMT+2: 2 * 60 * 60 * 1000
-  // GMT-5: -5 * 60 * 60 * 1000
-  const yourTimezone = new Date(now.getTime() + (YOUR_OFFSET * 60 * 60 * 1000));
-  
-  // Optional: Change reset hour (currently 2 AM)
-  if (yourTimezone.getHours() < YOUR_RESET_HOUR) {
-    yourTimezone.setDate(yourTimezone.getDate() - 1);
-  }
-  
-  return formatDate(yourTimezone);
-}
-```
+**Common IANA timezone names:**
 
-### 4. Update Database Schema
+| Country / Region | Timezone |
+|---|---|
+| Tunisia, Algeria, most of W. Europe | `Africa/Tunis` / `Europe/Paris` |
+| Egypt, South Africa, Eastern Europe | `Africa/Cairo` / `Europe/Helsinki` |
+| Saudi Arabia, Iraq, Kuwait | `Asia/Riyadh` |
+| Pakistan | `Asia/Karachi` |
+| Bangladesh | `Asia/Dhaka` |
+| Malaysia, Indonesia (West) | `Asia/Kuala_Lumpur` |
+| Turkey | `Europe/Istanbul` |
+| UK | `Europe/London` |
+| US Eastern | `America/New_York` |
+| US Central | `America/Chicago` |
+| US Pacific | `America/Los_Angeles` |
 
-Edit `supabase/migrations/00000000000000_complete_schema.sql`:
+The full list is at [en.wikipedia.org/wiki/List_of_tz_database_time_zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
-**Find and update default region:**
+> **Why not use `getTime() + offset`?** Fixed offsets break when clocks change for daylight saving time. IANA timezone strings let the platform handle those transitions correctly.
+
+---
+
+## 4. Update the database defaults
+
+Edit `supabase/migrations/00000000000000_complete_schema.sql` and update the default region to a sensible value for your deployment:
+
 ```sql
 CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name text NOT NULL DEFAULT 'Ramadan Warrior',
-  region text NOT NULL DEFAULT 'Tunis',  -- Change this to your capital/main city
+  region text NOT NULL DEFAULT 'Your Default Region', -- ← change this
   -- ...
 );
 ```
 
-**Update mock data regions:**
+Also update the mock seed data if present:
+
 ```sql
 INSERT INTO profiles (id, display_name, region, avatar_color, month_total_points) VALUES
-  ('11111111-1111-1111-1111-111111111111', 'Test User 1', 'YourRegion1', '#7c3aed', 11),
-  ('22222222-2222-2222-2222-222222222222', 'Test User 2', 'YourRegion2', '#dc2626', 10)
+  ('11111111-...', 'Test User 1', 'Your Region', '#7c3aed', 11),
+  ('22222222-...', 'Test User 2', 'Your Region', '#dc2626', 10)
 ON CONFLICT (id) DO NOTHING;
 ```
 
-### 5. Setup Supabase
+---
 
-1. **Create Supabase Project:**
-   - Go to [supabase.com](https://supabase.com)
-   - Create new project
-   - Copy your project URL and anon key
+## 5. Connect Supabase
 
-2. **Create `.env.local` file:**
-```bash
+Create a `.env.local` file in the project root:
+
+```
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-3. **Run Database Migration:**
-   - Go to Supabase Dashboard → SQL Editor
-   - Copy entire content of `supabase/migrations/00000000000000_complete_schema.sql`
-   - Paste and run in SQL Editor
+Then run the migration:
 
-### 6. Update Branding (Optional)
+1. Open your Supabase project → SQL Editor
+2. Paste the full contents of `supabase/migrations/00000000000000_complete_schema.sql`
+3. Run it
 
-**Change app name in multiple files:**
+---
 
-`app/layout.tsx`:
-```typescript
-export const metadata: Metadata = {
-  title: 'Your Country Name - Ramadan Quest',
-  description: 'Ramadan habit tracker for Your Country',
-};
-```
+## 6. Test locally
 
-`app/page.tsx`:
-```typescript
-<h1 className="text-4xl font-bold text-white">
-  Your Country Ramadan Quest
-</h1>
-```
-
-### 7. Update Region Validation
-
-Edit `components/dashboard/profile-settings.tsx`:
-
-Find the region selector and update options:
-```typescript
-<select
-  value={editedProfile.region}
-  onChange={(e) => setEditedProfile({...editedProfile, region: e.target.value})}
-  className="w-full p-2 border rounded-md"
->
-  {YOUR_COUNTRY_REGIONS.map(region => (
-    <option key={region} value={region}>{region}</option>
-  ))}
-</select>
-```
-
-### 8. Test the Setup
-
-1. **Start development server:**
 ```bash
 npm run dev
 ```
 
-2. **Open browser:**
-```
-http://localhost:3000
-```
+Go to `http://localhost:3000` and verify:
 
-3. **Test the flow:**
-   - Sign up with test account
-   - Check if region dropdown shows your regions
-   - Complete a deed and verify timezone works
-   - Check leaderboard displays correctly
+- Region dropdown shows your regions
+- Completing a deed saves correctly
+- The leaderboard loads
+- The daily reset fires at the right time in your timezone (you can temporarily set `RESET_HOUR = 0` and test at midnight)
 
-### 9. Deploy to Production
+---
 
-**Option A: Vercel (Recommended)**
+## 7. Deploy
+
+**Vercel:**
 ```bash
-npm run build
 vercel deploy
 ```
 
-**Option B: Netlify**
+**Netlify:**
 ```bash
 npm run build
 netlify deploy
 ```
 
-Add environment variables in your hosting platform dashboard.
+Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as environment variables in your hosting dashboard.
 
 ---
 
-## US and Europe Examples
+## File reference
 
-### United States (single timezone build)
-
-If you plan to launch to a single US timezone (for example, only EST users), set a single offset:
-
-```typescript
-const estTime = new Date(now.getTime() + (-5 * 60 * 60 * 1000));
-```
-
-If you need true multi-timezone behavior in the US, consider storing a timezone per user and calculating reset per user on the server.
-
-### United Kingdom (GMT)
-
-```typescript
-const ukTime = new Date(now.getTime() + (0 * 60 * 60 * 1000));
-```
-
-### Central Europe (CET / GMT+1)
-
-```typescript
-const cetTime = new Date(now.getTime() + (1 * 60 * 60 * 1000));
-```
-
-### Eastern Europe (EET / GMT+2)
-
-```typescript
-const eetTime = new Date(now.getTime() + (2 * 60 * 60 * 1000));
-```
-
-### Example 1: United States
-```typescript
-// 50 states
-export const USA_REGIONS = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
-  // ... all 50 states
-];
-
-// EST timezone (GMT-5)
-const estTime = new Date(now.getTime() + (-5 * 60 * 60 * 1000));
-```
-
-### Example 2: Saudi Arabia
-```typescript
-// 13 provinces
-export const SAUDI_REGIONS = [
-  'Riyadh', 'Makkah', 'Madinah', 'Eastern Province',
-  'Asir', 'Tabuk', 'Qassim', 'Ha\'il', 'Jizan',
-  'Najran', 'Al Bahah', 'Northern Borders', 'Al Jawf'
-];
-
-// AST timezone (GMT+3)
-const astTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
-```
-
-### Example 3: Malaysia
-```typescript
-// 13 states + 3 federal territories
-export const MALAYSIA_REGIONS = [
-  'Johor', 'Kedah', 'Kelantan', 'Malacca', 'Negeri Sembilan',
-  'Pahang', 'Penang', 'Perak', 'Perlis', 'Sabah', 'Sarawak',
-  'Selangor', 'Terengganu', 'Kuala Lumpur', 'Labuan', 'Putrajaya'
-];
-
-// MYT timezone (GMT+8)
-const mytTime = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-```
-
----
-
-## Key Files Reference
-
-| File | Purpose | What to Change |
-|------|---------|----------------|
-| `lib/deed-utils.ts` | Core logic | Regions array, timezone functions |
-| `components/dashboard/profile-settings.tsx` | Profile editing | Region selector |
-| `components/dashboard/leaderboard.tsx` | Rankings | Region filtering |
-| `supabase/migrations/00000000000000_complete_schema.sql` | Database | Default region, mock data |
-| `app/page.tsx` | Landing page | Branding, country name |
-| `app/layout.tsx` | App metadata | Title, description |
+| File | What to change |
+|---|---|
+| `lib/deed-utils.ts` | `REGIONS`, `TIMEZONE`, `RESET_HOUR` |
+| `supabase/migrations/...sql` | Default region, seed data |
+| `app/layout.tsx` | Page title and description |
+| `app/page.tsx` | Landing page copy |
 
 ---
 
 ## Troubleshooting
 
-### Issue: Wrong timezone displaying
-**Solution:** Check `getTodayDateWithReset()` offset calculation. Test with `console.log(new Date())`.
+**Wrong date showing for users:** Verify `TIMEZONE` is the correct IANA string. Log `getTodayDateWithReset()` in the browser console to check.
 
-### Issue: Regions not showing in dropdown
-**Solution:** Verify region array is exported and imported correctly in profile-settings.tsx.
+**Regions not appearing in dropdown:** Make sure `REGIONS` is exported from `deed-utils.ts` and imported in `profile-settings.tsx`.
 
-### Issue: Database errors
-**Solution:** Ensure migration ran successfully. Check Supabase logs for RLS policy issues.
+**Database errors on signup:** Check that the migration ran without errors and that RLS policies are enabled. Supabase Dashboard → Logs will show the detail.
 
-### Issue: Leaderboard showing wrong data
-**Solution:** Check if timezone affects date comparison in leaderboard queries.
-
----
-
-## Support
-
-For issues or questions:
-1. Check [GitHub Issues](https://github.com/your-repo/ramadan-duo/issues)
-2. Review Supabase documentation
-3. Test with mock data first before going live
-
----
-
-## License
-
-This project is open source. Feel free to adapt for your country/region.
-
----
-
-**Ready to customize?** Start with Step 1 and work through each section carefully. Test thoroughly before deploying to production! 🚀
+**Leaderboard showing stale data:** The leaderboard uses the same date key as the deed tracker — if the timezone is misconfigured, they can drift. Fix the timezone first, then verify both use `getTodayDateWithReset()`.
