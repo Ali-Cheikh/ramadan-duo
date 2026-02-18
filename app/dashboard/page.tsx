@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase, DailyLog } from '@/lib/supabase';
+import { supabase, DailyLog, Profile } from '@/lib/supabase';
 import { ProgressRing } from '@/components/dashboard/progress-ring';
 import { DeedButton } from '@/components/dashboard/deed-button';
 import { Leaderboard } from '@/components/dashboard/leaderboard';
@@ -19,8 +19,9 @@ import {
   DeedCategory,
 } from '@/lib/deed-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Flame, Trophy, User, Sparkles, Target } from 'lucide-react';
+import { Flame, Trophy, User, Sparkles, Target, Home, Users, Share2, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
@@ -50,11 +51,54 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('tracker');
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Ramadan Quest',
+          text: `Join me on Ramadan Quest! I've completed ${countCompletedDeeds(deeds)} deeds today.`,
+          url: window.location.origin,
+        });
+      } catch (err) {
+        console.log('Share cancelled');
+      }
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(window.location.origin);
+      alert('Link copied to clipboard!');
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
     } else if (user) {
+      loadProfile();
+    }
+  }, [user, authLoading, router]);
+
+  const loadProfile = async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (data) {
+      setProfile(data);
+    }
+  };
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    } else if (user) {
+      loadProfile();
       loadTodayLog();
       loadStreaks();
     }
@@ -158,111 +202,262 @@ export default function DashboardPage() {
   }
 
   const completedCount = countCompletedDeeds(deeds);
-
-  const deedsByCategory = DEEDS.reduce((acc, deed) => {
-    if (!acc[deed.category]) {
-      acc[deed.category] = [];
-    }
-    acc[deed.category].push(deed);
-    return acc;
-  }, {} as Record<DeedCategory, typeof DEEDS>);
+  const deedsByCategory = {
+    prayer: DEEDS.filter(d => d.category === 'prayer'),
+    iman: DEEDS.filter(d => d.category === 'iman'),
+    tummy: DEEDS.filter(d => d.category === 'tummy'),
+    social: DEEDS.filter(d => d.category === 'social'),
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-emerald-100">
-      <div className="container mx-auto px-4 py-6 max-w-4xl">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="tracker" className="flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              Tracker
-            </TabsTrigger>
-            <TabsTrigger value="leaderboard" className="flex items-center gap-2">
-              <Trophy className="w-4 h-4" />
-              Leaderboard
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Profile
-            </TabsTrigger>
-          </TabsList>
+    <>
+      {/* Screen Size Restriction - Only allow mobile/tablet */}
+      <div className="hidden md:flex h-screen items-center justify-center bg-gradient-to-br from-emerald-50 to-emerald-100 p-8">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">📱</div>
+          <h1 className="text-3xl font-bold text-emerald-900 mb-4">Mobile Only</h1>
+          <p className="text-lg text-emerald-700 mb-2">Ramadan Quest is designed for mobile devices.</p>
+          <p className="text-emerald-600">Please open this app on your phone or tablet for the best experience.</p>
+        </div>
+      </div>
 
-          <TabsContent value="tracker" className="space-y-6">
-            <div className="flex justify-center mb-8">
-              <ProgressRing progress={completedCount} total={12} />
+      {/* Mobile/Tablet View */}
+      <div className="md:hidden h-screen flex flex-col bg-gradient-to-br from-emerald-50 to-emerald-100">
+        {/* Main Content Area - Scrollable */}
+        <div className="flex-1 overflow-y-auto pb-20">
+          <div className="container mx-auto px-4 py-4">
+            {/* Top Action Buttons - Always Visible */}
+            <div className="flex items-center justify-between mb-4">
+              {/* Left Button: Share on Tracker, Back on other tabs */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={activeTab === 'tracker' ? handleShare : () => setActiveTab('tracker')}
+                className="rounded-full"
+              >
+                {activeTab === 'tracker' ? (
+                  <Share2 className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <ArrowLeft className="w-5 h-5 text-emerald-600" />
+                )}
+              </Button>
+              
+              {/* Profile Button with Menu */}
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full"
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                >
+                  <Avatar className="w-9 h-9">
+                    <AvatarFallback 
+                      style={{ backgroundColor: profile?.avatar_color || '#059669' }}
+                      className="text-white font-bold text-sm"
+                    >
+                      {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+                
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => {
+                        setActiveTab('profile');
+                        setShowProfileMenu(false);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm"
+                    >
+                      <User className="w-4 h-4" />
+                      Profile Settings
+                    </button>
+                    <div className="border-t border-gray-200 my-1"></div>
+                    <button
+                      className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-gray-500 text-sm"
+                      disabled
+                    >
+                      🌐 Language (Soon)
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <Flame className="w-8 h-8 text-amber-600" />
-                    <div>
-                      <div className="text-sm text-amber-700 font-medium">Daily Streak</div>
-                      <div className="text-2xl font-bold text-amber-900">{streaks.dailyStreak} days</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Tracker View */}
+          {activeTab === 'tracker' && (
+            <div className="space-y-4">
+              <div className="flex justify-center counter-spacing">
+                <ProgressRing progress={completedCount} total={12} />
+              </div>
 
-              <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center gap-3">
-                    <Sparkles className="w-8 h-8 text-emerald-600" />
-                    <div>
-                      <div className="text-sm text-emerald-700 font-medium">Prayer Streak</div>
-                      <div className="text-2xl font-bold text-emerald-900">{streaks.prayerStreak} days</div>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Flame className="w-6 h-6 text-amber-600" />
+                      <div>
+                        <div className="text-xs text-amber-700 font-medium">Daily Streak</div>
+                        <div className="text-xl font-bold text-amber-900">{streaks.dailyStreak} days</div>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-6 h-6 text-emerald-600" />
+                      <div>
+                        <div className="text-xs text-emerald-700 font-medium">Prayer Streak</div>
+                        <div className="text-xl font-bold text-emerald-900">{streaks.prayerStreak} days</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {Object.entries(deedsByCategory).map(([category, categoryDeeds]) => (
+                <Card key={category} className="overflow-hidden">
+                  <CardHeader className="pb-2 pt-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <span>{CATEGORY_INFO[category as DeedCategory].icon}</span>
+                      <span>{CATEGORY_INFO[category as DeedCategory].name}</span>
+                      <span className="ml-auto text-xs font-normal text-gray-500">
+                        {categoryDeeds.filter(d => deeds[d.key]).length}/3
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 pb-3">
+                    {categoryDeeds.map(deed => (
+                      <DeedButton
+                        key={deed.key}
+                        label={deed.label}
+                        emoji={deed.icon}
+                        completed={deeds[deed.key]}
+                        onClick={() => toggleDeed(deed.key)}
+                        category={deed.category}
+                      />
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
             </div>
+          )}
 
-            {Object.entries(deedsByCategory).map(([category, categoryDeeds]) => (
-              <Card key={category} className="overflow-hidden">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <span>{CATEGORY_INFO[category as DeedCategory].icon}</span>
-                    <span>{CATEGORY_INFO[category as DeedCategory].name}</span>
-                    <span className="ml-auto text-sm font-normal text-gray-500">
-                      {categoryDeeds.filter(d => deeds[d.key]).length}/3
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {categoryDeeds.map(deed => (
-                    <DeedButton
-                      key={deed.key}
-                      label={deed.label}
-                      emoji={deed.icon}
-                      completed={deeds[deed.key]}
-                      onClick={() => toggleDeed(deed.key)}
-                      category={deed.category}
-                    />
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
-
-          <TabsContent value="leaderboard">
+          {/* Leaderboard View */}
+          {activeTab === 'leaderboard' && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Trophy className="w-6 h-6 text-amber-500" />
-                  Spiritual Leaderboard
+                 Leaderboard
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <Leaderboard />
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="profile">
+          {/* Friends View - Placeholder */}
+          {activeTab === 'friends' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-6 h-6 text-blue-500" />
+                  Friends
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12 text-gray-500">
+                  <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">Friends System</p>
+                  <p className="text-sm">Coming soon...</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Dashboard View - Placeholder */}
+          {activeTab === 'dashboard' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Home className="w-6 h-6 text-purple-500" />
+                  Dashboard
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12 text-gray-500">
+                  <Home className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">Analytics Dashboard</p>
+                  <p className="text-sm">Stats and insights coming soon...</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Profile View */}
+          {activeTab === 'profile' && (
             <ProfileSettings />
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
+        </div>
+
+        {/* Bottom Navigation Bar - Fixed */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-inset-bottom z-20">
+          <div className="flex justify-around items-center h-16">
+          <button
+            onClick={() => setActiveTab('tracker')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'tracker'
+                ? 'text-emerald-600'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <Target className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Tracker</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('leaderboard')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'leaderboard'
+                ? 'text-emerald-600'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <Trophy className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Ranks</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('friends')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'friends'
+                ? 'text-emerald-600'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <Users className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Friends</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex flex-col items-center justify-center flex-1 h-full transition-colors ${
+              activeTab === 'dashboard'
+                ? 'text-emerald-600'
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <Home className="w-6 h-6 mb-1" />
+            <span className="text-xs font-medium">Stats</span>
+          </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

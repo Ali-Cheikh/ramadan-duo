@@ -30,18 +30,18 @@ export function DeedButton({ label, emoji, completed, onClick, category }: DeedB
     <button
       onClick={onClick}
       className={cn(
-        'relative w-full p-4 rounded-2xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg',
+        'relative w-full p-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-sm hover:shadow-md',
         completed ? categoryActiveColors[category] : categoryColors[category]
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="text-3xl">{emoji}</div>
+      <div className="flex items-center gap-2.5">
+        <div className="text-2xl">{emoji}</div>
         <div className="flex-1 text-left">
-          <div className="font-semibold text-sm">{label}</div>
+          <div className="font-semibold text-xs">{label}</div>
         </div>
         {completed && (
-          <div className="w-6 h-6 rounded-full bg-white/30 flex items-center justify-center">
-            <Check className="w-4 h-4" />
+          <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center">
+            <Check className="w-3.5 h-3.5" />
           </div>
         )}
       </div>

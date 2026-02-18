@@ -56,7 +56,19 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 flex items-center justify-center p-4">
+    <>
+      {/* Screen Size Restriction - Only allow mobile/tablet */}
+      <div className="hidden md:flex h-screen items-center justify-center bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 p-8">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">📱</div>
+          <h1 className="text-3xl font-bold text-white mb-4">Mobile Only</h1>
+          <p className="text-lg text-emerald-200 mb-2">Ramadan Quest is designed for mobile devices.</p>
+          <p className="text-emerald-300">Please open this app on your phone or tablet for the best experience.</p>
+        </div>
+      </div>
+
+      {/* Mobile/Tablet View */}
+      <div className="md:hidden min-h-screen bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-800 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-2xl border-emerald-700">
         <CardHeader className="space-y-3 text-center">
           <div className="mx-auto w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center shadow-lg">
@@ -64,7 +76,7 @@ export default function SignupPage() {
           </div>
           <CardTitle className="text-3xl font-bold text-emerald-900">Join Ramadan Quest</CardTitle>
           <CardDescription className="text-base">
-            Create your account and start your spiritual journey
+            Create your account and start yourjourney
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -167,6 +179,7 @@ export default function SignupPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }

@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Trophy, Medal, MapPin } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getTodayDate } from '@/lib/deed-utils';
 import {
   Select,
   SelectContent,
@@ -44,7 +45,7 @@ const TUNISIA_REGIONS = [
 
 interface LeaderboardEntry {
   profile: Profile;
-  monthTotalPoints: number;
+  points: number;
   rank: number;
 }
 
@@ -57,6 +58,7 @@ export function Leaderboard() {
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [userRegion, setUserRegion] = useState<string>('');
   const [displayCount, setDisplayCount] = useState(10);
+  const [timeFilter, setTimeFilter] = useState<'today' | 'month'>('month');
 
   useEffect(() => {
     loadUserRegion();
@@ -66,6 +68,10 @@ export function Leaderboard() {
   useEffect(() => {
     filterLeaderboard();
   }, [filter, selectedRegion, allLeaderboard]);
+
+  useEffect(() => {
+    loadLeaderboard();
+  }, [timeFilter]);
 
   useEffect(() => {
     // Reset display count when filter changes
@@ -106,23 +112,64 @@ export function Leaderboard() {
   const loadLeaderboard = async () => {
     setLoading(true);
 
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('month_total_points', { ascending: false });
+    if (timeFilter === 'today') {
+      // Load today's rankings from daily_logs
+      const today = getTodayDate();
+      const { data: dailyLogs, error: logsError } = await supabase
+        .from('daily_logs')
+        .select('user_id, points_earned')
+        .eq('log_date', today)
+        .order('points_earned', { ascending: false });
 
-    if (profilesError || !profiles) {
-      setLoading(false);
-      return;
+      if (logsError || !dailyLogs) {
+        setLoading(false);
+        return;
+      }
+
+      // Get profiles for these users
+      const userIds = dailyLogs.map(log => log.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', userIds);
+
+      if (profilesError || !profiles) {
+        setLoading(false);
+        return;
+      }
+
+      // Combine data
+      const leaderboardData: LeaderboardEntry[] = dailyLogs.map((log, index) => {
+        const profile = profiles.find(p => p.id === log.user_id);
+        return {
+          profile: profile!,
+          points: log.points_earned || 0,
+          rank: index + 1,
+        };
+      }).filter(entry => entry.profile); // Filter out any missing profiles
+
+      setAllLeaderboard(leaderboardData);
+    } else {
+      // Load monthly rankings from profiles
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('month_total_points', { ascending: false });
+
+      if (profilesError || !profiles) {
+        setLoading(false);
+        return;
+      }
+
+      const leaderboardData: LeaderboardEntry[] = profiles.map((profile, index) => ({
+        profile,
+        points: profile.month_total_points || 0,
+        rank: index + 1,
+      }));
+
+      setAllLeaderboard(leaderboardData);
     }
 
-    const leaderboardData: LeaderboardEntry[] = profiles.map((profile, index) => ({
-      profile,
-      monthTotalPoints: profile.month_total_points || 0,
-      rank: index + 1,
-    }));
-
-    setAllLeaderboard(leaderboardData);
     setLoading(false);
   };
 
@@ -143,6 +190,15 @@ export function Leaderboard() {
 
   return (
     <div className="space-y-4">
+      {/* Time Filter Toggle */}
+      <Tabs value={timeFilter} onValueChange={(v) => setTimeFilter(v as 'today' | 'month')} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="today">Today</TabsTrigger>
+          <TabsTrigger value="month">This Month</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Region Filter */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as 'global' | 'region')} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="global">National</TabsTrigger>
@@ -169,7 +225,7 @@ export function Leaderboard() {
       )}
 
       {leaderboard.length > 0 && (
-        <div className="text-sm text-gray-600 text-center">
+        <div className="text-xs text-gray-600 text-center">
           Showing {Math.min(displayCount, leaderboard.length)} of {leaderboard.length} users
           {filter === 'region' && selectedRegion && ` in ${selectedRegion}`}
         </div>
@@ -187,35 +243,28 @@ export function Leaderboard() {
                 key={entry.profile.id}
                 className={entry.rank <= 3 ? 'border-2 border-amber-300 bg-amber-50/50' : ''}
               >
-              <CardContent className="py-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 flex items-center justify-center">
+              <CardContent className="py-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 flex items-center justify-center">
                     {getRankIcon(entry.rank)}
                   </div>
 
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
-                    style={{ backgroundColor: entry.profile.avatar_color }}
-                  >
-                    {entry.profile.display_name.charAt(0).toUpperCase()}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm truncate">
                       {entry.profile.display_name}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-xs text-gray-500">
                       {entry.profile.region}
                     </div>
                   </div>
 
-                  <div className="flex gap-2 items-center">
-                    <div className="text-center bg-gradient-to-br from-emerald-50 to-emerald-100 px-4 py-2 rounded-lg border border-emerald-200">
+                  <div className="flex gap-2 items-center flex-shrink-0">
+                    <div className="text-center bg-gradient-to-br from-emerald-50 to-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
                       <div className="flex items-center gap-1">
-                        <Trophy className="w-4 h-4 text-emerald-600" />
-                        <span className="font-bold text-emerald-900 text-lg">{entry.monthTotalPoints}</span>
+                        <Trophy className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="font-bold text-emerald-900 text-base">{entry.points}</span>
                       </div>
-                      <div className="text-xs text-emerald-600 font-medium">Month Points</div>
+                      <div className="text-[10px] text-emerald-600 font-medium">{timeFilter === 'today' ? 'Today' : 'Month'}</div>
                     </div>
                   </div>
                 </div>
