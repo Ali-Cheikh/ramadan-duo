@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LogOut, Save } from 'lucide-react';
+import { Copy, LogOut, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AVATAR_COLORS = [
@@ -147,6 +147,32 @@ export function ProfileSettings() {
               placeholder="Enter your display name"
             />
           </div>
+
+          {!!profile?.username && (
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-md border bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  @{profile.username}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`@${profile.username}`);
+                      toast.success('Username copied');
+                    } catch {
+                      toast.error('Failed to copy username');
+                    }
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="region">Region (Tunisia)</Label>

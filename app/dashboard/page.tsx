@@ -9,6 +9,7 @@ import { supabase, DailyLog, Profile } from '@/lib/supabase';
 import { ProgressRing } from '@/components/dashboard/progress-ring';
 import { DeedButton } from '@/components/dashboard/deed-button';
 import { Leaderboard } from '@/components/dashboard/leaderboard';
+import { FriendsSystem } from '@/components/dashboard/friends-system';
 import { ProfileSettings } from '@/components/dashboard/profile-settings';
 import {
   DEEDS,
@@ -21,9 +22,10 @@ import {
   DeedCategory,
 } from '@/lib/deed-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Flame, Trophy, User, Sparkles, Target, Home, Users, Share2, ArrowLeft } from 'lucide-react';
+import { Flame, Trophy, User, Sparkles, Target, Home, Users, Share2, ArrowLeft, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { toast } from 'sonner';
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
@@ -57,6 +59,18 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('tracker');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const usernameLabel = profile?.username ? `@${profile.username}` : '';
+
+  const copyUsername = async () => {
+    if (!usernameLabel) return;
+    try {
+      await navigator.clipboard.writeText(usernameLabel);
+      toast.success('Username copied');
+    } catch {
+      toast.error('Failed to copy username');
+    }
+  };
 
   const handleShare = async () => {
     if (navigator.share) {
@@ -265,7 +279,7 @@ export default function DashboardPage() {
         <div className="flex-1 overflow-y-auto pb-20">
           <div className="container mx-auto px-4 py-4">
             {/* Top Action Buttons - Always Visible */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="relative flex items-center justify-between mb-4">
               {/* Left Button: Share on Tracker, Back on other tabs */}
               <Button
                 variant="ghost"
@@ -279,6 +293,16 @@ export default function DashboardPage() {
                   <ArrowLeft className="w-5 h-5 text-emerald-600" />
                 )}
               </Button>
+
+              {usernameLabel && (
+                <button
+                  onClick={copyUsername}
+                  className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-white/65 px-2 py-1 rounded-full border border-white/70 text-xs text-emerald-800"
+                >
+                  <span className="truncate max-w-[120px]">{usernameLabel}</span>
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              )}
               
               {/* Profile Button with Menu */}
               <div className="relative">
@@ -398,7 +422,7 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Friends View - Placeholder */}
+          {/* Friends View */}
           {activeTab === 'friends' && (
             <Card>
               <CardHeader>
@@ -408,11 +432,7 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-gray-500">
-                  <Users className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium">{t('dashboard.friendsSystem')}</p>
-                  <p className="text-sm">{t('dashboard.comingSoon')}</p>
-                </div>
+                <FriendsSystem />
               </CardContent>
             </Card>
           )}

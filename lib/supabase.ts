@@ -14,6 +14,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export type Profile = {
   id: string;
   display_name: string;
+  username?: string;
   region: string;
   avatar_color: string;
   avatar_icon: string;
@@ -43,4 +44,22 @@ export type DailyLog = {
   points_earned: number;
   created_at: string;
   updated_at: string;
+};
+
+export type FriendRequest = {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+  updated_at: string;
+};
+
+export type FriendNudge = {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
 };

@@ -54,6 +54,7 @@
 CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name text NOT NULL DEFAULT 'Ramadan Warrior',
+  username text,
   region text NOT NULL DEFAULT 'Tunis',
   avatar_color text NOT NULL DEFAULT '#059669',
   avatar_icon text NOT NULL DEFAULT 'star',
@@ -98,6 +99,42 @@ CREATE TABLE IF NOT EXISTS daily_stats (
   UNIQUE(user_id, date)
 );
 
+-- Create friend_requests table for social graph
+CREATE TABLE IF NOT EXISTS friend_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  receiver_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT friend_requests_no_self CHECK (sender_id <> receiver_id),
+  CONSTRAINT friend_requests_direction_unique UNIQUE (sender_id, receiver_id)
+);
+
+-- Create friend_nudges table for in-app nudges
+CREATE TABLE IF NOT EXISTS friend_nudges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  to_user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  message text NOT NULL DEFAULT 'Come check Ramadan Quest today 🌙',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  read_at timestamptz,
+  CONSTRAINT friend_nudges_no_self CHECK (from_user_id <> to_user_id)
+);
+
+-- Create push_subscriptions table for browser notifications
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  endpoint text NOT NULL UNIQUE,
+  p256dh text NOT NULL,
+  auth text NOT NULL,
+  user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- ============================================================================
 -- INDEXES
 -- ============================================================================
@@ -105,6 +142,8 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 -- Indexes for profiles
 CREATE INDEX IF NOT EXISTS idx_profiles_region ON profiles(region);
 CREATE INDEX IF NOT EXISTS idx_profiles_month_points ON profiles(month_total_points DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_unique ON profiles(LOWER(username));
+CREATE INDEX IF NOT EXISTS idx_profiles_display_name ON profiles(LOWER(display_name));
 
 -- Indexes for daily_logs
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date DESC);
@@ -115,6 +154,19 @@ CREATE INDEX IF NOT EXISTS idx_daily_stats_user ON daily_stats(user_id);
 CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date);
 CREATE INDEX IF NOT EXISTS idx_daily_stats_user_date ON daily_stats(user_id, date DESC);
 
+-- Indexes for friend_requests
+CREATE UNIQUE INDEX IF NOT EXISTS idx_friend_requests_active_pair
+ON friend_requests (LEAST(sender_id, receiver_id), GREATEST(sender_id, receiver_id))
+WHERE status IN ('pending', 'accepted');
+CREATE INDEX IF NOT EXISTS idx_friend_requests_receiver_status ON friend_requests(receiver_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_sender_status ON friend_requests(sender_id, status, created_at DESC);
+
+-- Indexes for friend_nudges
+CREATE INDEX IF NOT EXISTS idx_friend_nudges_to_user ON friend_nudges(to_user_id, created_at DESC);
+
+-- Indexes for push_subscriptions
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);
+
 -- ============================================================================
 -- ROW LEVEL SECURITY (RLS)
 -- ============================================================================
@@ -123,6 +175,9 @@ CREATE INDEX IF NOT EXISTS idx_daily_stats_user_date ON daily_stats(user_id, dat
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friend_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friend_nudges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view all profiles"
@@ -185,6 +240,72 @@ CREATE POLICY "Users can update their own daily stats"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- Friend requests policies
+DROP POLICY IF EXISTS "Users can view related friend requests" ON friend_requests;
+CREATE POLICY "Users can view related friend requests"
+  ON friend_requests FOR SELECT
+  TO authenticated
+  USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+DROP POLICY IF EXISTS "Users can create outgoing friend requests" ON friend_requests;
+CREATE POLICY "Users can create outgoing friend requests"
+  ON friend_requests FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = sender_id AND sender_id <> receiver_id);
+
+DROP POLICY IF EXISTS "Users can update related friend requests" ON friend_requests;
+CREATE POLICY "Users can update related friend requests"
+  ON friend_requests FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = sender_id OR auth.uid() = receiver_id)
+  WITH CHECK (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+-- Friend nudges policies
+DROP POLICY IF EXISTS "Users can view nudges they sent or received" ON friend_nudges;
+CREATE POLICY "Users can view nudges they sent or received"
+  ON friend_nudges FOR SELECT
+  TO authenticated
+  USING (auth.uid() = from_user_id OR auth.uid() = to_user_id);
+
+DROP POLICY IF EXISTS "Users can send nudges from self" ON friend_nudges;
+CREATE POLICY "Users can send nudges from self"
+  ON friend_nudges FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = from_user_id AND from_user_id <> to_user_id);
+
+DROP POLICY IF EXISTS "Users can mark their received nudges as read" ON friend_nudges;
+CREATE POLICY "Users can mark their received nudges as read"
+  ON friend_nudges FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = to_user_id)
+  WITH CHECK (auth.uid() = to_user_id);
+
+-- Push subscription policies
+DROP POLICY IF EXISTS "Users can view their push subscriptions" ON push_subscriptions;
+CREATE POLICY "Users can view their push subscriptions"
+  ON push_subscriptions FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert their push subscriptions" ON push_subscriptions;
+CREATE POLICY "Users can insert their push subscriptions"
+  ON push_subscriptions FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update their push subscriptions" ON push_subscriptions;
+CREATE POLICY "Users can update their push subscriptions"
+  ON push_subscriptions FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their push subscriptions" ON push_subscriptions;
+CREATE POLICY "Users can delete their push subscriptions"
+  ON push_subscriptions FOR DELETE
+  TO authenticated
+  USING (auth.uid() = user_id);
+
 -- ============================================================================
 -- FUNCTIONS
 -- ============================================================================
@@ -193,17 +314,25 @@ CREATE POLICY "Users can update their own daily stats"
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, display_name, region, created_at, updated_at)
+  INSERT INTO public.profiles (id, display_name, username, region, created_at, updated_at)
   VALUES (
     new.id,
     COALESCE(new.raw_user_meta_data->>'display_name', 'Ramadan Warrior'),
+    LOWER(
+      regexp_replace(
+        COALESCE(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1), 'user'),
+        '[^a-zA-Z0-9]+',
+        '_',
+        'g'
+      ) || '_' || substr(replace(new.id::text, '-', ''), 1, 6)
+    ),
     'Tunis',
     now(),
     now()
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
@@ -212,7 +341,7 @@ BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SET search_path = public, pg_temp;
 
 -- Function to update or create daily stat
 CREATE OR REPLACE FUNCTION update_daily_stat(
@@ -228,7 +357,7 @@ BEGIN
     points = daily_stats.points + p_points,
     updated_at = now();
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Function to get month total for a user
 CREATE OR REPLACE FUNCTION get_month_total(p_user_id uuid)
@@ -243,7 +372,7 @@ BEGIN
   
   RETURN total;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Function to get month total for all users (for leaderboard)
 CREATE OR REPLACE FUNCTION get_all_month_totals()
@@ -257,7 +386,7 @@ BEGIN
   GROUP BY ds.user_id
   ORDER BY total_points DESC;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
 -- Function to sync month total to profile (for leaderboard)
 CREATE OR REPLACE FUNCTION sync_month_total_to_profile(p_user_id uuid)
@@ -274,7 +403,235 @@ BEGIN
   SET month_total_points = month_total
   WHERE id = p_user_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+-- Function to send friend request using username or email
+CREATE OR REPLACE FUNCTION public.send_friend_request(p_identifier text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_sender uuid := auth.uid();
+  v_receiver uuid;
+  v_identifier text := lower(trim(p_identifier));
+  v_request_id uuid;
+BEGIN
+  IF v_sender IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Not authenticated');
+  END IF;
+
+  IF v_identifier IS NULL OR v_identifier = '' THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Please enter username or email');
+  END IF;
+
+  SELECT p.id
+  INTO v_receiver
+  FROM public.profiles p
+  LEFT JOIN auth.users u ON u.id = p.id
+  WHERE lower(COALESCE(p.username, '')) = v_identifier
+     OR lower(COALESCE(u.email, '')) = v_identifier
+  LIMIT 1;
+
+  IF v_receiver IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'User not found');
+  END IF;
+
+  IF v_receiver = v_sender THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'You cannot add yourself');
+  END IF;
+
+  SELECT fr.id
+  INTO v_request_id
+  FROM public.friend_requests fr
+  WHERE fr.status = 'accepted'
+    AND ((fr.sender_id = v_sender AND fr.receiver_id = v_receiver)
+      OR (fr.sender_id = v_receiver AND fr.receiver_id = v_sender))
+  LIMIT 1;
+
+  IF v_request_id IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Already friends');
+  END IF;
+
+  SELECT fr.id
+  INTO v_request_id
+  FROM public.friend_requests fr
+  WHERE fr.status = 'pending'
+    AND fr.sender_id = v_sender
+    AND fr.receiver_id = v_receiver
+  LIMIT 1;
+
+  IF v_request_id IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Request already sent');
+  END IF;
+
+  SELECT fr.id
+  INTO v_request_id
+  FROM public.friend_requests fr
+  WHERE fr.status = 'pending'
+    AND fr.sender_id = v_receiver
+    AND fr.receiver_id = v_sender
+  LIMIT 1;
+
+  IF v_request_id IS NOT NULL THEN
+    UPDATE public.friend_requests
+    SET status = 'accepted', updated_at = now()
+    WHERE id = v_request_id;
+
+    RETURN jsonb_build_object('ok', true, 'status', 'accepted', 'request_id', v_request_id);
+  END IF;
+
+  INSERT INTO public.friend_requests (sender_id, receiver_id, status)
+  VALUES (v_sender, v_receiver, 'pending')
+  RETURNING id INTO v_request_id;
+
+  RETURN jsonb_build_object('ok', true, 'status', 'pending', 'request_id', v_request_id);
+END;
+$$;
+
+-- Function to accept/reject a friend request
+CREATE OR REPLACE FUNCTION public.respond_friend_request(p_request_id uuid, p_accept boolean)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user uuid := auth.uid();
+  v_request public.friend_requests%ROWTYPE;
+  v_new_status text;
+BEGIN
+  IF v_user IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Not authenticated');
+  END IF;
+
+  SELECT *
+  INTO v_request
+  FROM public.friend_requests
+  WHERE id = p_request_id
+    AND receiver_id = v_user
+    AND status = 'pending'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Request not found');
+  END IF;
+
+  v_new_status := CASE WHEN p_accept THEN 'accepted' ELSE 'rejected' END;
+
+  UPDATE public.friend_requests
+  SET status = v_new_status, updated_at = now()
+  WHERE id = p_request_id;
+
+  RETURN jsonb_build_object('ok', true, 'status', v_new_status, 'request_id', p_request_id);
+END;
+$$;
+
+-- Function to get pending friend requests (sent and received)
+CREATE OR REPLACE FUNCTION public.get_friend_requests()
+RETURNS TABLE (
+  request_id uuid,
+  direction text,
+  status text,
+  created_at timestamptz,
+  other_user_id uuid,
+  other_display_name text,
+  other_username text,
+  other_avatar_color text
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT
+    fr.id AS request_id,
+    CASE WHEN fr.sender_id = auth.uid() THEN 'sent' ELSE 'received' END AS direction,
+    fr.status,
+    fr.created_at,
+    p.id AS other_user_id,
+    p.display_name AS other_display_name,
+    p.username AS other_username,
+    p.avatar_color AS other_avatar_color
+  FROM public.friend_requests fr
+  JOIN public.profiles p
+    ON p.id = CASE WHEN fr.sender_id = auth.uid() THEN fr.receiver_id ELSE fr.sender_id END
+  WHERE (fr.sender_id = auth.uid() OR fr.receiver_id = auth.uid())
+    AND fr.status = 'pending'
+  ORDER BY fr.created_at DESC;
+$$;
+
+-- Function to get accepted friends list
+CREATE OR REPLACE FUNCTION public.get_friends_list()
+RETURNS TABLE (
+  friend_id uuid,
+  display_name text,
+  username text,
+  region text,
+  avatar_color text,
+  since timestamptz
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT
+    p.id AS friend_id,
+    p.display_name,
+    p.username,
+    p.region,
+    p.avatar_color,
+    fr.updated_at AS since
+  FROM public.friend_requests fr
+  JOIN public.profiles p
+    ON p.id = CASE WHEN fr.sender_id = auth.uid() THEN fr.receiver_id ELSE fr.sender_id END
+  WHERE (fr.sender_id = auth.uid() OR fr.receiver_id = auth.uid())
+    AND fr.status = 'accepted'
+  ORDER BY lower(p.display_name);
+$$;
+
+-- Function to send in-app nudge to a friend
+CREATE OR REPLACE FUNCTION public.send_friend_nudge(
+  p_friend_id uuid,
+  p_message text DEFAULT 'Come check Ramadan Quest today 🌙'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user uuid := auth.uid();
+  v_is_friend boolean;
+  v_nudge_id uuid;
+BEGIN
+  IF v_user IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Not authenticated');
+  END IF;
+
+  IF p_friend_id IS NULL OR p_friend_id = v_user THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'Invalid friend');
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.friend_requests fr
+    WHERE fr.status = 'accepted'
+      AND ((fr.sender_id = v_user AND fr.receiver_id = p_friend_id)
+        OR (fr.sender_id = p_friend_id AND fr.receiver_id = v_user))
+  ) INTO v_is_friend;
+
+  IF NOT v_is_friend THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'You can only nudge friends');
+  END IF;
+
+  INSERT INTO public.friend_nudges (from_user_id, to_user_id, message)
+  VALUES (v_user, p_friend_id, left(COALESCE(trim(p_message), 'Come check Ramadan Quest today 🌙'), 280))
+  RETURNING id INTO v_nudge_id;
+
+  RETURN jsonb_build_object('ok', true, 'nudge_id', v_nudge_id);
+END;
+$$;
 
 -- ============================================================================
 -- TRIGGERS
@@ -304,6 +661,25 @@ CREATE TRIGGER set_updated_at_daily_stats
   BEFORE UPDATE ON daily_stats
   FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
+-- Trigger for updated_at on friend_requests
+DROP TRIGGER IF EXISTS set_updated_at_friend_requests ON friend_requests;
+CREATE TRIGGER set_updated_at_friend_requests
+  BEFORE UPDATE ON friend_requests
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- Trigger for updated_at on push_subscriptions
+DROP TRIGGER IF EXISTS set_updated_at_push_subscriptions ON push_subscriptions;
+CREATE TRIGGER set_updated_at_push_subscriptions
+  BEFORE UPDATE ON push_subscriptions
+  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- Grants for friends RPCs
+GRANT EXECUTE ON FUNCTION public.send_friend_request(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.respond_friend_request(uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_friend_requests() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_friends_list() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.send_friend_nudge(uuid, text) TO authenticated;
+
 -- ============================================================================
 -- COMPLETED
 -- ============================================================================
@@ -319,6 +695,9 @@ CREATE TRIGGER set_updated_at_daily_stats
 -- ✓ Month-long leaderboards
 -- ✓ Regional filtering (24 Tunisia regions)
 -- ✓ Automatic profile creation on signup
+-- ✓ Friends system (requests, accept/reject, list)
+-- ✓ In-app nudges
+-- ✓ Push subscription storage for browser notifications
 -- ✓ Row Level Security enabled
 -- ✓ Optimized indexes for performance
 -- 

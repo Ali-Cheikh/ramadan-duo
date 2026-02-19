@@ -27,6 +27,17 @@ The app is mobile-first and designed to work for any region and timezone. See [S
 - [Supabase](https://supabase.com)
 - [shadcn/ui](https://ui.shadcn.com)
 
+## Web Push Setup
+
+To enable browser push notifications for friend nudges, add these environment variables:
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
+- `VAPID_PRIVATE_KEY`
+- `VAPID_SUBJECT` (example: `mailto:contact@yourdomain.com`)
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Then run the latest migrations and open the Friends tab once to allow notification permission.
+
 ## License
 
 MIT — open source and free to use, fork, and adapt.
