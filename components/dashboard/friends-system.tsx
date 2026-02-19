@@ -104,12 +104,6 @@ export function FriendsSystem() {
   const enablePushNotifications = async () => {
     if (typeof window === 'undefined' || !user) return;
 
-    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    if (!vapidPublicKey) {
-      toast.error('VAPID public key is missing');
-      return;
-    }
-
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       toast.error('Push is not supported on this browser');
       return;
@@ -118,6 +112,16 @@ export function FriendsSystem() {
     setActionLoading('enable-push');
 
     try {
+      const keyResponse = await fetch('/api/push/public-key');
+      const keyResult = await keyResponse.json();
+      const vapidPublicKey = keyResult?.publicKey as string | undefined;
+
+      if (!keyResponse.ok || !vapidPublicKey) {
+        toast.error('VAPID public key is missing');
+        setActionLoading(null);
+        return;
+      }
+
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         toast.error('Push permission not granted');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -18,14 +18,29 @@ export default function SignupPage() {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const router = useRouter();
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const timer = setTimeout(() => {
+      setCooldownSeconds((current) => Math.max(current - 1, 0));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [cooldownSeconds]);
 
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cooldownSeconds > 0) return;
+
     setLoading(true);
     setError('');
+    setSuccessMessage('');
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -37,10 +52,22 @@ export default function SignupPage() {
     });
 
     if (error) {
-      setError(error.message);
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('rate limit') || error.status === 429) {
+        setError('Too many signup attempts. Please wait 60 seconds and try again.');
+        setCooldownSeconds(60);
+      } else {
+        setError(error.message);
+      }
       setLoading(false);
     } else {
-      router.push('/dashboard');
+      if (data?.session) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setSuccessMessage('Account created. Check your email to confirm your account before logging in.');
+      setLoading(false);
     }
   };
 
@@ -117,12 +144,21 @@ export default function SignupPage() {
                   {error}
                 </div>
               )}
+              {successMessage && (
+                <div className="text-sm text-emerald-700 bg-emerald-50 p-3 rounded-md">
+                  {successMessage}
+                </div>
+              )}
               <Button
                 type="submit"
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                disabled={loading}
+                disabled={loading || cooldownSeconds > 0}
               >
-                {loading ? t('common.creatingAccount') : t('common.signup')}
+                {loading
+                  ? t('common.creatingAccount')
+                  : cooldownSeconds > 0
+                    ? `Try again in ${cooldownSeconds}s`
+                    : t('common.signup')}
               </Button>
             </form>
 
