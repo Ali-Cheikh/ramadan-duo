@@ -161,7 +161,7 @@ export function ProfileSettings() {
                   size="icon"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(`@${profile.username}`);
+                      await navigator.clipboard.writeText(profile.username || '');
                       toast.success('Username copied');
                     } catch {
                       toast.error('Failed to copy username');

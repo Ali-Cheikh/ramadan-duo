@@ -74,6 +74,32 @@ export function FriendsSystem() {
     }
   }, [user]);
 
+  const requestNotificationAfterFriendValue = async () => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) return;
+
+    if (friends.length === 0) return;
+
+    if (Notification.permission === 'granted') {
+      await enablePushNotifications({ silentIfAlreadyEnabled: true });
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        await enablePushNotifications({ silentIfAlreadyEnabled: true });
+      }
+    } catch {
+      // ignore permission prompt errors
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    requestNotificationAfterFriendValue();
+  }, [friends.length, user]);
+
   const urlBase64ToUint8Array = (base64String: string) => {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -101,7 +127,7 @@ export function FriendsSystem() {
     }
   };
 
-  const enablePushNotifications = async () => {
+  const enablePushNotifications = async (options?: { silentIfAlreadyEnabled?: boolean }) => {
     if (typeof window === 'undefined' || !user) return;
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -122,7 +148,9 @@ export function FriendsSystem() {
         return;
       }
 
-      const permission = await Notification.requestPermission();
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
       if (permission !== 'granted') {
         toast.error('Push permission not granted');
         setActionLoading(null);
@@ -132,6 +160,7 @@ export function FriendsSystem() {
       const registration = (await navigator.serviceWorker.register('/sw.js')) as PushCapableServiceWorkerRegistration;
 
       let subscription = await registration.pushManager.getSubscription();
+      const hadExistingSubscription = Boolean(subscription);
       if (!subscription) {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
@@ -148,25 +177,21 @@ export function FriendsSystem() {
         return;
       }
 
-      const { error } = await supabase.from('push_subscriptions').upsert(
-        {
-          user_id: user.id,
-          endpoint,
-          p256dh: keys.p256dh,
-          auth: keys.auth,
-          user_agent: navigator.userAgent,
-          last_seen_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'endpoint',
-        }
-      );
+      const { data: registerResult, error } = await supabase.rpc('register_push_subscription', {
+        p_endpoint: endpoint,
+        p_p256dh: keys.p256dh,
+        p_auth: keys.auth,
+        p_user_agent: navigator.userAgent,
+      });
 
-      if (error) {
-        toast.error('Could not save push subscription');
+      const result = registerResult as { ok?: boolean; error?: string } | null;
+      if (error || !result?.ok) {
+        toast.error(result?.error || 'Could not save push subscription');
       } else {
         setPushEnabled(true);
-        toast.success('Push notifications enabled');
+        if (!(options?.silentIfAlreadyEnabled && hadExistingSubscription)) {
+          toast.success('Push notifications enabled');
+        }
       }
     } catch (error) {
       toast.error('Could not enable push notifications');
@@ -334,7 +359,7 @@ export function FriendsSystem() {
         {!pushEnabled && (
           <Button
             variant="outline"
-            onClick={enablePushNotifications}
+            onClick={() => enablePushNotifications()}
             disabled={actionLoading === 'enable-push'}
             className="flex-1"
           >

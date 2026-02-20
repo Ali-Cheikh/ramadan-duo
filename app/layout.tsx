@@ -9,6 +9,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ramadan-duo.vercel.app'),
+  manifest: '/manifest.json',
   title: 'Ramadan Quest | Ramadan Habit Tracker',
   description: 'Mobile-first Ramadan habit tracker to build consistent spiritual routines with daily deeds, streaks, and leaderboards.',
   keywords: [

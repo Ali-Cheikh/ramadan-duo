@@ -44,6 +44,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  // Get sender's username for personalized notification
+  const { data: senderProfile, error: senderError } = await serviceClient
+    .from('profiles')
+    .select('username, display_name')
+    .eq('id', senderId)
+    .maybeSingle();
+
   const { data: friendship, error: friendshipError } = await serviceClient
     .from('friend_requests')
     .select('id')
@@ -71,10 +78,15 @@ export async function POST(request: NextRequest) {
 
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
+  const senderName = senderProfile?.username || senderProfile?.display_name || 'A friend';
+  const notificationTitle = `🌙 ${senderName} nudged you!`;
+  
   const payload = JSON.stringify({
-    title: 'Ramadan Quest',
+    title: notificationTitle,
     body: body.message,
-    url: '/dashboard',
+    url: '/dashboard/friends',
+    tag: 'nudge-notification',
+    requireInteraction: false,
   });
 
   let sentCount = 0;

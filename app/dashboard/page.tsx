@@ -11,6 +11,7 @@ import { DeedButton } from '@/components/dashboard/deed-button';
 import { Leaderboard } from '@/components/dashboard/leaderboard';
 import { FriendsSystem } from '@/components/dashboard/friends-system';
 import { ProfileSettings } from '@/components/dashboard/profile-settings';
+import { StatsTab } from '@/components/dashboard/stats-tab';
 import {
   DEEDS,
   CATEGORY_INFO,
@@ -22,10 +23,19 @@ import {
   DeedCategory,
 } from '@/lib/deed-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Flame, Trophy, User, Sparkles, Target, Home, Users, Share2, ArrowLeft, Copy } from 'lucide-react';
+import { Flame, Trophy, User, Sparkles, Target, Home, Users, Share2, ArrowLeft, Copy, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+
+type PushCapableServiceWorkerRegistration = ServiceWorkerRegistration & {
+  pushManager: PushManager;
+};
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
@@ -59,13 +69,17 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('tracker');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isPushSubscribing, setIsPushSubscribing] = useState(false);
 
   const usernameLabel = profile?.username ? `@${profile.username}` : '';
 
   const copyUsername = async () => {
     if (!usernameLabel) return;
     try {
-      await navigator.clipboard.writeText(usernameLabel);
+      await navigator.clipboard.writeText(profile?.username || '');
       toast.success('Username copied');
     } catch {
       toast.error('Failed to copy username');
@@ -126,6 +140,132 @@ export default function DashboardPage() {
       loadProfile();
     }
   }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIsInstalled(standalone);
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || authLoading || isInstalled) return;
+
+    const timer = setTimeout(() => {
+      if (deferredInstallPrompt) {
+        setShowInstallPrompt(true);
+      }
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [user, authLoading, isInstalled, deferredInstallPrompt]);
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let index = 0; index < rawData.length; ++index) {
+      outputArray[index] = rawData.charCodeAt(index);
+    }
+
+    return outputArray;
+  };
+
+  const subscribeUserToPush = async () => {
+    if (!user || typeof window === 'undefined') return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    setIsPushSubscribing(true);
+    try {
+      const keyResponse = await fetch('/api/push/public-key');
+      const keyResult = await keyResponse.json();
+      const vapidPublicKey = keyResult?.publicKey as string | undefined;
+
+      if (!keyResponse.ok || !vapidPublicKey) {
+        setIsPushSubscribing(false);
+        return;
+      }
+
+      const registration = (await navigator.serviceWorker.register('/sw.js')) as PushCapableServiceWorkerRegistration;
+
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+      }
+
+      const subscriptionJson = subscription.toJSON();
+      const { endpoint, keys } = subscriptionJson;
+
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        setIsPushSubscribing(false);
+        return;
+      }
+
+      await supabase.rpc('register_push_subscription', {
+        p_endpoint: endpoint,
+        p_p256dh: keys.p256dh,
+        p_auth: keys.auth,
+        p_user_agent: navigator.userAgent,
+      });
+    } catch {
+      // keep silent to avoid noisy prompts
+    }
+    setIsPushSubscribing(false);
+  };
+
+  const requestNotificationAfterFirstValue = async () => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      await subscribeUserToPush();
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      toast.success('Notifications enabled');
+      await subscribeUserToPush();
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    if (streaks.dailyStreak > 0 && !isPushSubscribing) {
+      requestNotificationAfterFirstValue();
+    }
+  }, [streaks.dailyStreak, user]);
+
+  const handleInstallApp = async () => {
+    if (!deferredInstallPrompt) return;
+
+    await deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+
+    if (choice.outcome === 'accepted') {
+      setIsInstalled(true);
+      setShowInstallPrompt(false);
+      setDeferredInstallPrompt(null);
+      toast.success('App installed successfully');
+    } else {
+      setShowInstallPrompt(false);
+    }
+  };
 
   const loadProfile = async () => {
     if (!user) return;
@@ -243,6 +383,59 @@ export default function DashboardPage() {
 
     // Refresh streaks
     loadStreaks();
+
+    // Check for achievements after streak update
+    setTimeout(async () => {
+      const { data: latestLogs, error: logsFetchError } = await supabase
+        .from('daily_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('log_date', { ascending: false })
+        .limit(100);
+
+      if (!logsFetchError && latestLogs) {
+        const updatedStreaks = calculateStreaks(latestLogs as DailyLog[]);
+        
+        // Award streak achievements
+        const { data: achievements, error: achieveError } = await supabase.rpc(
+          'check_and_award_achievements',
+          {
+            p_user_id: user.id,
+            p_daily_streak: updatedStreaks.dailyStreak,
+            p_perfect_streak: updatedStreaks.perfectStreak,
+          }
+        );
+
+        if (achievements && Array.isArray(achievements)) {
+          achievements.forEach((achievement: any) => {
+            if (achievement.newly_earned) {
+              const badgeMessages: Record<string, string> = {
+                streak_3: '🔥 3-Day Streak! Keep it going!',
+                streak_7: '🎯 7-Day Streak! Amazing!',
+                streak_14: '👑 2-Week Champion! Incredible!',
+                streak_30: '⭐ 30-Day Legend! You are unstoppable!',
+              };
+              if (badgeMessages[achievement.badge_type]) {
+                toast.success(badgeMessages[achievement.badge_type]);
+              }
+            }
+          });
+        }
+
+        // Schedule retention reminders after successful deed completion
+        if (pointsEarned > 0) {
+          try {
+            // Schedule hourly reminder
+            await supabase.rpc('schedule_hourly_reminder', { p_user_id: user.id });
+            
+            // Schedule evening last-chance reminder
+            await supabase.rpc('schedule_evening_reminder', { p_user_id: user.id });
+          } catch (error) {
+            console.error('Error scheduling reminders:', error);
+          }
+        }
+      }
+    }, 500);
   };
 
   if (authLoading || loading) {
@@ -346,6 +539,21 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {showInstallPrompt && !isInstalled && (
+              <Card className="mb-4 border-emerald-200 bg-white/80 backdrop-blur-sm">
+                <CardContent className="pt-4 pb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Install Ramadan Quest</p>
+                    <p className="text-xs text-emerald-700">Get app-like experience and better notifications.</p>
+                  </div>
+                  <Button onClick={handleInstallApp} className="bg-emerald-600 hover:bg-emerald-700 h-9 px-3">
+                    <Download className="w-4 h-4 mr-1" />
+                    Install
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
           {/* Tracker View */}
           {activeTab === 'tracker' && (
             <div className="space-y-4">
@@ -439,21 +647,11 @@ export default function DashboardPage() {
 
           {/* Dashboard View - Placeholder */}
           {activeTab === 'dashboard' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Home className="w-6 h-6 text-purple-500" />
-                  {t('dashboard.stats')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-12 text-gray-500">
-                  <Home className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <p className="text-lg font-medium">{t('dashboard.analyticsDashboard')}</p>
-                  <p className="text-sm">{t('dashboard.statsAndInsights')}</p>
-                </div>
-              </CardContent>
-            </Card>
+            <StatsTab 
+              dailyStreak={streaks.dailyStreak}
+              perfectStreak={streaks.perfectStreak}
+              totalPoints={streaks.totalPoints}
+            />
           )}
 
           {/* Profile View */}
