@@ -44,7 +44,6 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
         data: {
           display_name: displayName || 'Ramadan Warrior',
         },
@@ -62,11 +61,12 @@ export default function SignupPage() {
       setLoading(false);
     } else {
       if (data?.session) {
-        router.push('/dashboard');
+        router.replace('/dashboard');
         return;
       }
 
-      setSuccessMessage('Account created. Check your email to confirm your account before logging in.');
+      setSuccessMessage('Account created successfully. Please sign in to continue.');
+      router.replace('/login');
       setLoading(false);
     }
   };
