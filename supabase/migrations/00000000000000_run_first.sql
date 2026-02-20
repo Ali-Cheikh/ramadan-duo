@@ -1,30 +1,33 @@
 /*
-  # Ramadan Quest - Complete Database Schema
+  # Ramadan Quest - Base Database Schema
   
   ## Overview
-  Complete database setup for Ramadan Quest habit tracker app with:
-  - Tunisia-focused regional tracking (24 regions)
-  - GMT+1 timezone support with 3:30 AM daily reset
+  Base database setup for Ramadan Quest habit tracker app with:
+  - Regional tracking (customizable by country)
+  - Timezone-aware daily reset
   - Daily deed tracking with month-long leaderboards
+  - Friend system with nudges
+  - Web push subscription management
   
-  ## Tables
+  ## Base Tables (This Migration)
   
   ### `profiles`
   User profile information:
   - `id` (uuid, primary key) - Links to auth.users
   - `display_name` (text) - User's display name for leaderboard
-  - `region` (text) - User's region in Tunisia (24 governorates)
+  - `username` (text) - Unique username for sharing
+  - `region` (text) - User's region (customizable by country)
   - `avatar_color` (text) - Hex color for avatar
   - `avatar_icon` (text) - Icon name for avatar
-  - `month_total_points` (integer) - Total points accumulated in Ramadan
+  - `month_total_points` (integer) - Total points accumulated
   - `created_at` (timestamptz) - Account creation timestamp
   - `updated_at` (timestamptz) - Last profile update timestamp
   
   ### `daily_logs`
-  Daily deed tracking (resets at 3:30 AM GMT+1):
+  Daily deed tracking:
   - `id` (uuid, primary key) - Unique log identifier
   - `user_id` (uuid, foreign key) - References profiles.id
-  - `log_date` (date) - The date for this log (GMT+1)
+  - `log_date` (date) - The date for this log
   - `deeds` (jsonb) - JSON object storing completion status of all 12 deeds
   - `points_earned` (integer) - Total points earned today (0-12)
   - `created_at` (timestamptz) - When the log was created
@@ -39,11 +42,40 @@
   - `created_at` (timestamptz) - When the stat was created
   - `updated_at` (timestamptz) - Last update to the stat
   
+  ### `friend_requests`
+  Friend connection system:
+  - `id` (uuid, primary key) - Unique request identifier
+  - `sender_id`, `receiver_id` - User references
+  - `status` - pending, accepted, or rejected
+  
+  ### `friend_nudges`
+  Friend nudge notifications:
+  - `id` (uuid, primary key) - Unique nudge identifier
+  - `from_user_id`, `to_user_id` - Who nudged whom
+  - `message` (text) - Nudge message
+  - `read_at` (timestamptz) - When user saw the nudge
+  
+  ### `push_subscriptions`
+  Web push notification subscriptions:
+  - `id` (uuid, primary key) - Unique subscription identifier
+  - `user_id`, `endpoint`, `p256dh`, `auth` - Push credentials
+  - `user_agent` - Browser/device info for debugging
+  
+  ## Additional Tables (Separate Migrations)
+  
+  For achievements, rank tracking, and retention reminders, run:
+  - `20260220_register_push_subscription_rpc.sql` - Push subscription RPC
+  - `20260221_create_achievements_table.sql` - Achievement badges
+  - `20260221_add_achievements_rpc.sql` - Badge award logic
+  - `20260221_add_rank_tracking.sql` - Leaderboard rank changes
+  - `20260221_add_retention_reminders.sql` - Reminder scheduling
+  
   ## Security
   - Row Level Security (RLS) enabled on all tables
   - Users can read their own data
   - Users can view all profiles (for leaderboard)
   - Users can only modify their own data
+  - RPC functions use SECURITY DEFINER for cross-user operations
 */
 
 -- ============================================================================

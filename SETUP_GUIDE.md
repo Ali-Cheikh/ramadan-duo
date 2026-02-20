@@ -132,10 +132,15 @@ NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-Then run the migration:
+Then run the migrations in order in Supabase SQL Editor:
 
+1. `supabase/migrations/00000000000000_run_first.sql` (base schema)
+2. `supabase/migrations/20260220_register_push_subscription_rpc.sql` (if using push notifications)
+3. `supabase/migrations/20260221_*.sql` (achievements, reminders, etc.)
+
+For each file:
 1. Open your Supabase project → SQL Editor
-2. Paste the full contents of `supabase/migrations/00000000000000_complete_schema.sql`
+2. Paste the file contents
 3. Run it
 
 ---
@@ -148,10 +153,58 @@ npm run dev
 
 Go to `http://localhost:3000` and verify:
 
-- Region dropdown shows your regions
-- Completing a deed saves correctly
-- The leaderboard loads
-- The daily reset fires at the right time in your timezone (you can temporarily set `RESET_HOUR = 0` and test at midnight)
+- Sign up and log in
+- Region dropdown shows your regions  
+- Completing a deed saves correctly and updates points
+- The leaderboard loads with your user
+- The daily reset fires at the right time (check console: `getTodayDateWithReset()`)
+- If achievements migrations ran: Stats tab should load with badge guide
+- If push migrations ran: Friends tab should show "Enable notifications" option
+
+**Verify database tables exist:**
+
+Open Supabase SQL Editor and run:
+```sql
+SELECT table_name FROM information_schema.tables 
+WHERE table_schema = 'public' 
+ORDER BY table_name;
+```
+
+Should show at least: `profiles`, `daily_logs`, `daily_stats`, `friend_requests`, `friend_nudges`, `push_subscriptions`
+
+Optional (if you ran all migrations): `achievements`, `reminder_schedules`, `rank_changes`
+
+---
+
+## 6b. Configure Push Notifications (Optional)
+
+To enable browser push notifications and retention reminders:
+
+### Generate VAPID Keys
+
+Run this command to generate a VAPID key pair:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Add the keys to your `.env.local`:
+
+```
+VAPID_PUBLIC_KEY=your-public-key
+VAPID_PRIVATE_KEY=your-private-key
+VAPID_SUBJECT=mailto:your-email@domain.com
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### Set Up Retention Reminders Cron Job
+
+After deployment, configure a cron job to send scheduled notifications. See [CRON_SETUP.md](./CRON_SETUP.md) for detailed instructions.
+
+**Quick option:** Use [EasyCron](https://www.easycron.com):
+- URL: `https://your-domain.com/api/reminders/send`
+- Method: POST
+- Schedule: `*/5 * * * *` (every 5 minutes)
 
 ---
 
@@ -177,18 +230,28 @@ Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` as environmen
 | File | What to change |
 |---|---|
 | `lib/deed-utils.ts` | `REGIONS`, `TIMEZONE`, `RESET_HOUR` |
-| `supabase/migrations/...sql` | Default region, seed data |
-| `app/layout.tsx` | Page title and description |
-| `app/page.tsx` | Landing page copy |
+| `supabase/migrations/00000000000000_run_first.sql` | Default region (line ~65), seed data (optional) |
+| `app/layout.tsx` | Page title, description, manifest |
+| `.env.local` | Supabase keys, VAPID keys (if using push notifications) |
 
 ---
 
 ## Troubleshooting
 
+**Migration errors:** Check Supabase Dashboard → SQL Editor → Logs. Make sure you run migrations in order. If a migration fails, fix the issue and re-run just that file.
+
 **Wrong date showing for users:** Verify `TIMEZONE` is the correct IANA string. Log `getTodayDateWithReset()` in the browser console to check.
 
 **Regions not appearing in dropdown:** Make sure `REGIONS` is exported from `deed-utils.ts` and imported in `profile-settings.tsx`.
 
-**Database errors on signup:** Check that the migration ran without errors and that RLS policies are enabled. Supabase Dashboard → Logs will show the detail.
+**Database errors on signup:** Check that migrations ran without errors and RLS policies are enabled. Supabase Dashboard → Logs will show details.
 
-**Leaderboard showing stale data:** The leaderboard uses the same date key as the deed tracker — if the timezone is misconfigured, they can drift. Fix the timezone first, then verify both use `getTodayDateWithReset()`.
+**Leaderboard showing stale data:** Verify timezone is correct (see step 3). Both tracker and leaderboard use `getTodayDateWithReset()`.
+
+**Stats/achievements tab not showing:** Make sure `20260221_create_achievements_table.sql` was run. Check that `achievements` table exists in Supabase.
+
+**Notifications not working:** 
+1. Verify VAPID keys are set in `.env.local`
+2. Check `/api/push/public-key` returns valid key via browser DevTools
+3. Ensure service worker is registered (DevTools → Application → Service Workers)
+4. Browser must support Web Push API (all modern browsers do)

@@ -12,7 +12,7 @@ The retention reminder system requires an external cron job to periodically send
 3. Set up:
    - **URL to call:** `https://ramadan-duo.vercel.app/api/reminders/send`
    - **HTTP Method:** POST
-   - **Cron Expression:** `*/5 * * * *` (every 5 minutes)
+   - **Cron Expression:** `*/5 * * * *` (every 5 hours)
    - **HTTP headers:** (optional, for future auth if needed)
 
 4. Click "Create"
@@ -102,12 +102,3 @@ DELETE FROM reminder_schedules
 WHERE notification_sent = true 
 AND sent_at < now() - interval '7 days';
 ```
-
-## Future Enhancements
-
-- [ ] Skip reminder if user already completed deeds today
-- [ ] Vary messaging based on current streak length
-- [ ] A/B test different reminder times (3 AM vs 10 PM)
-- [ ] User settings to customize reminder frequency
-- [ ] "Do Not Disturb" hours (e.g., skip midnight-6 AM)
-- [ ] Smart batching (send max 1 notification per hour per user)
