@@ -174,12 +174,56 @@ export function calculateStreaks(logs: DailyLog[]): {
   // CRITICAL FIX: Use app's date logic (respects 3:30 AM reset)
   // Don't use browser's local date!
   const todayAppDate = getTodayDateWithReset(); // "2026-02-18" when before 3:30 AM
+
+  // If a placeholder log exists for today with 0 points, ignore it for streak continuity.
+  // This ensures users still see yesterday's running streak before their first click today.
+  const streakLogs =
+    sortedLogs[0]?.log_date === todayAppDate && sortedLogs[0]?.points_earned === 0
+      ? sortedLogs.slice(1)
+      : sortedLogs;
+
+  if (streakLogs.length === 0) {
+    return {
+      dailyStreak: 0,
+      perfectStreak: 0,
+      prayerStreak: 0,
+      imanStreak: 0,
+      tummyStreak: 0,
+      socialStreak: 0,
+      totalPoints: 0,
+    };
+  }
+
   let currentCheckDate = new Date(todayAppDate + 'T00:00:00Z');
+
+  // If user has not logged anything yet for "today", allow streak to continue from yesterday.
+  // Streak should only break after one fully missed app-day.
+  const mostRecentLogDate = streakLogs[0]?.log_date;
+  if (mostRecentLogDate && mostRecentLogDate !== todayAppDate) {
+    const yesterdayCheck = new Date(todayAppDate + 'T00:00:00Z');
+    yesterdayCheck.setUTCDate(yesterdayCheck.getUTCDate() - 1);
+    const yesterdayDateStr = yesterdayCheck.toISOString().split('T')[0];
+
+    if (mostRecentLogDate === yesterdayDateStr) {
+      currentCheckDate = yesterdayCheck;
+    } else {
+      return {
+        dailyStreak: 0,
+        perfectStreak: 0,
+        prayerStreak: 0,
+        imanStreak: 0,
+        tummyStreak: 0,
+        socialStreak: 0,
+        totalPoints: 0,
+      };
+    }
+  }
+
   let logIndex = 0;
 
   // Check consecutive days going backwards
-  while (logIndex < sortedLogs.length) {
-    const log = sortedLogs[logIndex];
+  while (logIndex < streakLogs.length) {
+    const log = streakLogs[logIndex];
     const logDate = new Date(log.log_date + 'T00:00:00Z');
     
     const expectedDateStr = currentCheckDate.toISOString().split('T')[0];

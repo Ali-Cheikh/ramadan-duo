@@ -97,13 +97,8 @@ CRON_SECRET=your-cron-secret
 Run these in order in your Supabase SQL Editor:
 
 1. `supabase/migrations/00000000000000_run_first.sql` (base schema)
-2. `supabase/migrations/20260220_register_push_subscription_rpc.sql` (push subscriptions)
-3. `supabase/migrations/20260221_create_achievements_table.sql` (badges)
-4. `supabase/migrations/20260221_add_achievements_rpc.sql` (achievement logic)
-5. `supabase/migrations/20260221_add_rank_tracking.sql` (leaderboard tracking)
-6. `supabase/migrations/20260221_add_retention_reminders.sql` (retention system)
-7. `supabase/migrations/20260221021500_security_hardening_rls_indexes.sql` (RLS + indexes + anti-spam)
-8. `supabase/migrations/20260221025500_fix_leaderboard_policies_and_achievements.sql` (leaderboard + achievements RPC compatibility)
+2. `supabase/migrations/20260222000000_fix_achievements_rpc_and_schema.sql` (achievements schema + RPC compatibility)
+3. `supabase/migrations/20260222013000_fix_update_daily_stat_rank_changes_compat.sql` (daily stat / rank_changes compatibility fix)
 
 ### Cron Job for Retention Reminders
 

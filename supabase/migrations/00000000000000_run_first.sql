@@ -63,14 +63,9 @@
   
   ## Additional Tables (Separate Migrations)
   
-  For achievements, rank tracking, retention reminders, and security hardening, run:
-  - `20260220_register_push_subscription_rpc.sql` - Push subscription RPC
-  - `20260221_create_achievements_table.sql` - Achievement badges
-  - `20260221_add_achievements_rpc.sql` - Badge award logic
-  - `20260221_add_rank_tracking.sql` - Leaderboard rank changes
-  - `20260221_add_retention_reminders.sql` - Reminder scheduling
-  - `20260221021500_security_hardening_rls_indexes.sql` - RLS tightening, nudge cooldown, reminder/index hardening
-  - `20260221025500_fix_leaderboard_policies_and_achievements.sql` - Leaderboard policy compatibility + achievements RPC compatibility
+  For achievements and compatibility fixes, run:
+  - `20260222000000_fix_achievements_rpc_and_schema.sql` - Achievement table + RPC compatibility
+  - `20260222013000_fix_update_daily_stat_rank_changes_compat.sql` - Daily stat / rank_changes compatibility
   
   ## Security
   - Row Level Security (RLS) enabled on all tables

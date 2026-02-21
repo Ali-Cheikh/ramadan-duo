@@ -3,6 +3,8 @@
 ## Overview
 The retention reminder system requires an external cron job to periodically send scheduled notifications. This prevents notifications from being sent only when users open the app.
 
+Only retention reminders use cron. Friend nudges and achievement notifications are immediate event-based pushes.
+
 ## Setup Instructions
 
 ### Option 1: Using EasyCron (Free, Simple)

@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
       .select('id, user_id, reminder_type, scheduled_for')
       .eq('notification_sent', false)
       .lte('scheduled_for', new Date().toISOString())
+      .order('scheduled_for', { ascending: true })
       .limit(100);
 
     if (remindersError) {

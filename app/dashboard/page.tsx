@@ -74,6 +74,7 @@ export default function DashboardPage() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [isPushSubscribing, setIsPushSubscribing] = useState(false);
   const [loadingDeed, setLoadingDeed] = useState<DeedKey | null>(null);
+  const [achievementsRefreshKey, setAchievementsRefreshKey] = useState(0);
 
   const usernameLabel = profile?.username ? `@${profile.username}` : '';
 
@@ -330,6 +331,158 @@ export default function DashboardPage() {
     }
   };
 
+  const getLifetimeMilestones = (logs: DailyLog[]) => {
+    if (!logs.length) {
+      return {
+        maxDailyStreak: 0,
+        hasPerfectDay: false,
+      };
+    }
+
+    const logsByDate = new Map<string, DailyLog>();
+    logs.forEach((log) => {
+      if (!logsByDate.has(log.log_date)) {
+        logsByDate.set(log.log_date, log);
+      }
+    });
+
+    const sortedDatesAsc = Array.from(logsByDate.keys()).sort((a, b) =>
+      new Date(a).getTime() - new Date(b).getTime()
+    );
+
+    let maxDailyStreak = 0;
+    let currentRun = 0;
+    let previousActiveDate: Date | null = null;
+
+    sortedDatesAsc.forEach((dateKey) => {
+      const log = logsByDate.get(dateKey);
+      if (!log || log.points_earned <= 0) {
+        currentRun = 0;
+        previousActiveDate = null;
+        return;
+      }
+
+      const currentDate = new Date(`${dateKey}T00:00:00Z`);
+      if (!previousActiveDate) {
+        currentRun = 1;
+      } else {
+        const diffDays = Math.round(
+          (currentDate.getTime() - previousActiveDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        currentRun = diffDays === 1 ? currentRun + 1 : 1;
+      }
+
+      previousActiveDate = currentDate;
+      maxDailyStreak = Math.max(maxDailyStreak, currentRun);
+    });
+
+    const hasPerfectDay = logs.some((log) => log.points_earned === 12);
+
+    return {
+      maxDailyStreak,
+      hasPerfectDay,
+    };
+  };
+
+  const awardAchievementsFallback = async (latestLogs: DailyLog[], dailyStreak: number, perfectStreak: number) => {
+    if (!user) return [] as string[];
+
+    const milestoneCandidates: Array<{ badge_type: string; milestone_value: number | null }> = [];
+
+    if (dailyStreak >= 3) milestoneCandidates.push({ badge_type: 'streak_3', milestone_value: 3 });
+    if (dailyStreak >= 7) milestoneCandidates.push({ badge_type: 'streak_7', milestone_value: 7 });
+    if (dailyStreak >= 14) milestoneCandidates.push({ badge_type: 'streak_14', milestone_value: 14 });
+    if (dailyStreak >= 30) milestoneCandidates.push({ badge_type: 'streak_30', milestone_value: 30 });
+    if (perfectStreak >= 1) milestoneCandidates.push({ badge_type: 'perfect_day', milestone_value: 1 });
+
+    const charityCount = latestLogs.filter((log) => log.deeds?.social_charity).length;
+    if (charityCount >= 5) {
+      milestoneCandidates.push({ badge_type: 'charity_warrior', milestone_value: charityCount });
+    }
+
+    const quranCount = latestLogs.filter((log) => log.deeds?.iman_quran).length;
+    if (quranCount >= 10) {
+      milestoneCandidates.push({ badge_type: 'quran_master', milestone_value: quranCount });
+    }
+
+    const { count: friendCount, error: friendCountError } = await supabase
+      .from('friend_requests')
+      .select('id', { count: 'exact', head: true })
+      .or(`and(sender_id.eq.${user.id},status.eq.accepted),and(receiver_id.eq.${user.id},status.eq.accepted)`);
+
+    if (!friendCountError && (friendCount ?? 0) > 0) {
+      milestoneCandidates.push({ badge_type: 'first_friend', milestone_value: 1 });
+    }
+
+    if (milestoneCandidates.length === 0) return [];
+
+    const badgeTypes = milestoneCandidates.map((candidate) => candidate.badge_type);
+    const { data: existingBadges, error: existingError } = await supabase
+      .from('achievements')
+      .select('badge_type')
+      .eq('user_id', user.id)
+      .in('badge_type', badgeTypes);
+
+    if (existingError) {
+      console.error('Error loading existing achievements:', existingError);
+      return [];
+    }
+
+    const existingBadgeSet = new Set((existingBadges || []).map((achievement: any) => achievement.badge_type));
+    const missingMilestones = milestoneCandidates.filter((candidate) => !existingBadgeSet.has(candidate.badge_type));
+
+    if (missingMilestones.length === 0) return [];
+
+    const { error: insertError } = await supabase.from('achievements').insert(
+      missingMilestones.map((candidate) => ({
+        user_id: user.id,
+        badge_type: candidate.badge_type,
+        milestone_value: candidate.milestone_value,
+      }))
+    );
+
+    if (insertError) {
+      console.error('Error inserting fallback achievements:', insertError);
+      return [];
+    }
+
+    return missingMilestones.map((candidate) => candidate.badge_type);
+  };
+
+  const awardAchievementsViaApi = async (dailyStreak: number, perfectStreak: number) => {
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data.session?.access_token;
+
+    if (!accessToken) {
+      return { earnedBadges: [] as string[], error: 'Missing session token' };
+    }
+
+    const response = await fetch('/api/achievements/award', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ dailyStreak, perfectStreak }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        earnedBadges: [] as string[],
+        error: result?.error || 'Award API failed',
+        notification: null as { reason?: string; sent?: boolean; sentCount?: number; subscriptionCount?: number } | null,
+      };
+    }
+
+    const earnedBadges = Array.isArray(result?.earnedBadges) ? result.earnedBadges : [];
+    return {
+      earnedBadges,
+      error: null as string | null,
+      notification: result?.notification as { reason?: string; sent?: boolean; sentCount?: number; subscriptionCount?: number } | null,
+    };
+  };
+
   const toggleDeed = async (deedKey: DeedKey) => {
     if (!user || loadingDeed) return; // Prevent spam clicks
 
@@ -402,31 +555,60 @@ export default function DashboardPage() {
 
       if (!logsFetchError && latestLogs) {
         const updatedStreaks = calculateStreaks(latestLogs as DailyLog[]);
+        const milestones = getLifetimeMilestones(latestLogs as DailyLog[]);
+        const streakForAwards = Math.max(updatedStreaks.dailyStreak, milestones.maxDailyStreak);
+        const perfectForAwards = milestones.hasPerfectDay ? 1 : updatedStreaks.perfectStreak;
         
-        // Award streak achievements
-        const { data: achievements, error: achieveError } = await supabase.rpc(
-          'check_and_award_achievements',
-          {
-            p_user_id: user.id,
-            p_daily_streak: updatedStreaks.dailyStreak,
-            p_perfect_streak: updatedStreaks.perfectStreak,
-          }
-        );
+        const badgeMessages: Record<string, string> = {
+          streak_3: '🔥 3-Day Streak! Keep it going!',
+          streak_7: '🎯 7-Day Streak! Amazing!',
+          streak_14: '👑 2-Week Champion! Incredible!',
+          streak_30: '⭐ 30-Day Legend! You are unstoppable!',
+          perfect_day: '✨ Perfect Day! All deeds completed!',
+          first_friend: '🦋 Social Butterfly! First friend connected!',
+          charity_warrior: '💝 Charity Warrior unlocked!',
+          quran_master: '📖 Quran Master unlocked!',
+        };
 
-        if (achievements && Array.isArray(achievements)) {
-          achievements.forEach((achievement: any) => {
-            if (achievement.newly_earned) {
-              const badgeMessages: Record<string, string> = {
-                streak_3: '🔥 3-Day Streak! Keep it going!',
-                streak_7: '🎯 7-Day Streak! Amazing!',
-                streak_14: '👑 2-Week Champion! Incredible!',
-                streak_30: '⭐ 30-Day Legend! You are unstoppable!',
-              };
-              if (badgeMessages[achievement.badge_type]) {
-                toast.success(badgeMessages[achievement.badge_type]);
-              }
+        const apiAward = await awardAchievementsViaApi(streakForAwards, perfectForAwards);
+
+        if (apiAward.error) {
+          console.error('Achievement award API error:', apiAward.error);
+          const fallbackEarnedBadges = await awardAchievementsFallback(
+            latestLogs as DailyLog[],
+            streakForAwards,
+            perfectForAwards
+          );
+
+          fallbackEarnedBadges.forEach((badgeType) => {
+            if (badgeMessages[badgeType]) {
+              toast.success(badgeMessages[badgeType]);
             }
           });
+          if (fallbackEarnedBadges.length > 0) {
+            setAchievementsRefreshKey((current) => current + 1);
+          }
+        } else {
+          apiAward.earnedBadges.forEach((badgeType: string) => {
+            if (badgeMessages[badgeType]) {
+              toast.success(badgeMessages[badgeType]);
+            }
+          });
+
+          if (apiAward.earnedBadges.length > 0) {
+            const reason = apiAward.notification?.reason;
+            if (reason === 'no_subscriptions') {
+              toast.info('Badge earned, but push is off on this device. Enable notifications to receive achievement alerts.');
+            } else if (reason === 'push_not_configured') {
+              toast.info('Badge earned, but push server is not configured yet.');
+            } else if (reason === 'delivery_failed') {
+              toast.info('Badge earned, but notification delivery failed on your current subscription.');
+            }
+          }
+
+          if (apiAward.earnedBadges.length > 0) {
+            setAchievementsRefreshKey((current) => current + 1);
+          }
         }
 
         // Schedule retention reminders after successful deed completion
@@ -587,7 +769,7 @@ export default function DashboardPage() {
                       <Sparkles className="w-6 h-6 text-emerald-600" />
                       <div>
                         <div className="text-xs text-emerald-700 font-medium">{t('dashboard.perfectStreak')}</div>
-                        <div className="text-xl font-bold text-emerald-900">{streaks.prayerStreak} {t('dashboard.days')}</div>
+                        <div className="text-xl font-bold text-emerald-900">{streaks.perfectStreak} {t('dashboard.days')}</div>
                       </div>
                     </div>
                   </CardContent>
@@ -659,6 +841,7 @@ export default function DashboardPage() {
               dailyStreak={streaks.dailyStreak}
               perfectStreak={streaks.perfectStreak}
               totalPoints={streaks.totalPoints}
+              refreshKey={achievementsRefreshKey}
             />
           )}
 

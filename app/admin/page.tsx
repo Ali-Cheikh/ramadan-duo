@@ -165,6 +165,7 @@ export default function AdminPage() {
     }
   };
 
+
   useEffect(() => {
     if (!authenticated || !adminSecret) {
       setLoading(false);

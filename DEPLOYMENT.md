@@ -4,13 +4,8 @@
 
 ### Database Migrations
 - [ ] Run `00000000000000_run_first.sql` in Supabase SQL Editor
-- [ ] Run `20260220_register_push_subscription_rpc.sql`
-- [ ] Run `20260221_create_achievements_table.sql`
-- [ ] Run `20260221_add_achievements_rpc.sql`
-- [ ] Run `20260221_add_rank_tracking.sql`
-- [ ] Run `20260221_add_retention_reminders.sql`
-- [ ] Run `20260221021500_security_hardening_rls_indexes.sql`
-- [ ] Run `20260221025500_fix_leaderboard_policies_and_achievements.sql`
+- [ ] Run `20260222000000_fix_achievements_rpc_and_schema.sql`
+- [ ] Run `20260222013000_fix_update_daily_stat_rank_changes_compat.sql`
 - [ ] Verify tables created: `achievements`, `reminder_schedules`, `rank_changes`
 
 ### Code Review
