@@ -101,7 +101,7 @@ The full list is at [en.wikipedia.org/wiki/List_of_tz_database_time_zones](https
 
 ## 4. Update the database defaults
 
-Edit `supabase/migrations/00000000000000_complete_schema.sql` and update the default region to a sensible value for your deployment:
+Edit `supabase/migrations/00000000000000_run_first.sql` and update the default region to a sensible value for your deployment:
 
 ```sql
 CREATE TABLE IF NOT EXISTS profiles (
@@ -130,13 +130,21 @@ Create a `.env.local` file in the project root:
 ```
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_SECRET=your-admin-secret
+CRON_SECRET=your-cron-secret
 ```
 
 Then run the migrations in order in Supabase SQL Editor:
 
 1. `supabase/migrations/00000000000000_run_first.sql` (base schema)
-2. `supabase/migrations/20260220_register_push_subscription_rpc.sql` (if using push notifications)
-3. `supabase/migrations/20260221_*.sql` (achievements, reminders, etc.)
+2. `supabase/migrations/20260220_register_push_subscription_rpc.sql` (push subscription RPC)
+3. `supabase/migrations/20260221_create_achievements_table.sql`
+4. `supabase/migrations/20260221_add_achievements_rpc.sql`
+5. `supabase/migrations/20260221_add_rank_tracking.sql`
+6. `supabase/migrations/20260221_add_retention_reminders.sql`
+7. `supabase/migrations/20260221021500_security_hardening_rls_indexes.sql`
+8. `supabase/migrations/20260221025500_fix_leaderboard_policies_and_achievements.sql`
 
 For each file:
 1. Open your Supabase project → SQL Editor
@@ -205,6 +213,7 @@ After deployment, configure a cron job to send scheduled notifications. See [CRO
 - URL: `https://your-domain.com/api/reminders/send`
 - Method: POST
 - Schedule: `*/5 * * * *` (every 5 minutes)
+- Header: `x-cron-secret: <CRON_SECRET>`
 
 ---
 

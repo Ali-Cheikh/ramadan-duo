@@ -1,17 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
+import { applyRateLimit, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
-  // This endpoint should only be called from trusted sources (cron job with API key)
-  // In production, you'd add additional auth like a secret token
-  
+  const ip = getClientIp(request);
+  const ipRate = applyRateLimit(`reminders:send:${ip}`, 30, 60_000);
+  if (!ipRate.allowed) {
+    return rateLimitResponse(ipRate.retryAfterSec);
+  }
+
+  // Verify CRON_SECRET from request header
+  const cronSecret = request.headers.get('x-cron-secret');
+  const expectedSecret = process.env.CRON_SECRET;
+
+  if (!expectedSecret || cronSecret !== expectedSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const vapidPublicKey = process.env.VAPID_PUBLIC_KEY?.trim();
   const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY?.trim();
-  const rawVapidSubject = process.env.VAPID_SUBJECT || 'mailto:contact@example.com';
+  const rawVapidSubject = process.env.VAPID_SUBJECT || 'mailto:contact@ali-cheikh.com';
   const vapidSubject = rawVapidSubject.replace(/\s+/g, '').replace('mailto:<', 'mailto:').replace('>', '');
 
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !vapidPublicKey || !vapidPrivateKey) {

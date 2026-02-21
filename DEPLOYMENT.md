@@ -3,10 +3,14 @@
 ## Pre-Deployment
 
 ### Database Migrations
-- [ ] Run `20260221_create_achievements_table.sql` in Supabase SQL Editor
+- [ ] Run `00000000000000_run_first.sql` in Supabase SQL Editor
+- [ ] Run `20260220_register_push_subscription_rpc.sql`
+- [ ] Run `20260221_create_achievements_table.sql`
 - [ ] Run `20260221_add_achievements_rpc.sql`
 - [ ] Run `20260221_add_rank_tracking.sql`
 - [ ] Run `20260221_add_retention_reminders.sql`
+- [ ] Run `20260221021500_security_hardening_rls_indexes.sql`
+- [ ] Run `20260221025500_fix_leaderboard_policies_and_achievements.sql`
 - [ ] Verify tables created: `achievements`, `reminder_schedules`, `rank_changes`
 
 ### Code Review
@@ -20,9 +24,11 @@
 - [ ] All imports validated
 
 ### Environment
-- [ ] All required `.env` variables present (no new ones added)
+- [ ] All required `.env` variables present
 - [ ] VAPID keys valid and in place
 - [ ] Supabase service role key accessible
+- [ ] `ADMIN_SECRET` configured (server env)
+- [ ] `CRON_SECRET` configured (server env)
 
 ## Deployment Steps
 
@@ -51,8 +57,9 @@ git push origin main
 ### 4. Set Up Cron Job
 - [ ] Choose cron provider (EasyCron recommended for easy setup)
 - [ ] Configure to call `/api/reminders/send` every 5-10 minutes
+- [ ] Add header `x-cron-secret: <CRON_SECRET>`
 - [ ] Note cron job URL (for manual triggers if needed)
-- [ ] Test manual trigger: `curl -X POST https://ramadan-duo.vercel.app/api/reminders/send`
+- [ ] Test manual trigger: `curl -X POST https://ramadan-duo.vercel.app/api/reminders/send -H "x-cron-secret: <CRON_SECRET>"`
 - [ ] Should return `{ "ok": true, "sent": 0 }` (0 sent initially)
 
 ### 5. Test Full Flow

@@ -63,19 +63,22 @@
   
   ## Additional Tables (Separate Migrations)
   
-  For achievements, rank tracking, and retention reminders, run:
+  For achievements, rank tracking, retention reminders, and security hardening, run:
   - `20260220_register_push_subscription_rpc.sql` - Push subscription RPC
   - `20260221_create_achievements_table.sql` - Achievement badges
   - `20260221_add_achievements_rpc.sql` - Badge award logic
   - `20260221_add_rank_tracking.sql` - Leaderboard rank changes
   - `20260221_add_retention_reminders.sql` - Reminder scheduling
+  - `20260221021500_security_hardening_rls_indexes.sql` - RLS tightening, nudge cooldown, reminder/index hardening
+  - `20260221025500_fix_leaderboard_policies_and_achievements.sql` - Leaderboard policy compatibility + achievements RPC compatibility
   
   ## Security
   - Row Level Security (RLS) enabled on all tables
-  - Users can read their own data
-  - Users can view all profiles (for leaderboard)
+  - Users can read their own private data
+  - Leaderboard uses aggregated/public-safe tables and policies
   - Users can only modify their own data
-  - RPC functions use SECURITY DEFINER for cross-user operations
+  - RPC functions use SECURITY DEFINER for controlled cross-user operations
+  - Cron/admin endpoints require shared secrets at API layer
 */
 
 -- ============================================================================

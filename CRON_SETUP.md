@@ -12,8 +12,8 @@ The retention reminder system requires an external cron job to periodically send
 3. Set up:
    - **URL to call:** `https://ramadan-duo.vercel.app/api/reminders/send`
    - **HTTP Method:** POST
-   - **Cron Expression:** `*/5 * * * *` (every 5 hours)
-   - **HTTP headers:** (optional, for future auth if needed)
+   - **Cron Expression:** `*/5 * * * *` (every 5 minutes)
+   - **HTTP header (required):** `x-cron-secret: <CRON_SECRET>`
 
 4. Click "Create"
 
@@ -71,6 +71,7 @@ The evening "last chance" reminder is calculated in GMT+1 (Tunisia time):
 
 1. Check cron job is triggering:
    - Visit `/api/reminders/send` manually
+   - Must include header `x-cron-secret`
    - Should return `{ ok: true, sent: X }`
 
 2. Check pending reminders exist:

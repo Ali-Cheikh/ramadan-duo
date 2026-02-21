@@ -73,6 +73,7 @@ export default function DashboardPage() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isPushSubscribing, setIsPushSubscribing] = useState(false);
+  const [loadingDeed, setLoadingDeed] = useState<DeedKey | null>(null);
 
   const usernameLabel = profile?.username ? `@${profile.username}` : '';
 
@@ -330,7 +331,9 @@ export default function DashboardPage() {
   };
 
   const toggleDeed = async (deedKey: DeedKey) => {
-    if (!user) return;
+    if (!user || loadingDeed) return; // Prevent spam clicks
+
+    setLoadingDeed(deedKey); // Lock this deed button
 
     const wasCompleted = deeds[deedKey];
     const newDeeds = { ...deeds, [deedKey]: !deeds[deedKey] };
@@ -355,6 +358,7 @@ export default function DashboardPage() {
 
     if (logError) {
       console.error('Error updating daily log:', logError);
+      setLoadingDeed(null); // Unlock button on error
       return;
     }
 
@@ -383,6 +387,9 @@ export default function DashboardPage() {
 
     // Refresh streaks
     loadStreaks();
+
+    // Unlock button immediately - still processing in background
+    setLoadingDeed(null);
 
     // Check for achievements after streak update
     setTimeout(async () => {
@@ -607,6 +614,7 @@ export default function DashboardPage() {
                         completed={deeds[deed.key]}
                         onClick={() => toggleDeed(deed.key)}
                         category={deed.category}
+                        loading={loadingDeed === deed.key}
                       />
                     ))}
                   </CardContent>

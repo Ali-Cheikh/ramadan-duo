@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { Check, Loader } from 'lucide-react';
 
 interface DeedButtonProps {
   label: string;
@@ -9,6 +9,7 @@ interface DeedButtonProps {
   completed: boolean;
   onClick: () => void;
   category: 'prayer' | 'iman' | 'tummy' | 'social';
+  loading?: boolean;
 }
 
 const categoryColors = {
@@ -25,12 +26,13 @@ const categoryActiveColors = {
   social: 'bg-purple-500 border-purple-600 text-white',
 };
 
-export function DeedButton({ label, emoji, completed, onClick, category }: DeedButtonProps) {
+export function DeedButton({ label, emoji, completed, onClick, category, loading = false }: DeedButtonProps) {
   return (
     <button
       onClick={onClick}
+      disabled={loading}
       className={cn(
-        'relative w-full p-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-sm hover:shadow-md',
+        'relative w-full p-3 rounded-xl border-2 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-sm hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100',
         completed ? categoryActiveColors[category] : categoryColors[category]
       )}
     >
@@ -39,11 +41,15 @@ export function DeedButton({ label, emoji, completed, onClick, category }: DeedB
         <div className="flex-1 text-left">
           <div className="font-semibold text-xs">{label}</div>
         </div>
-        {completed && (
+        {loading ? (
+          <div className="w-5 h-5 flex items-center justify-center">
+            <Loader className="w-3.5 h-3.5 animate-spin" />
+          </div>
+        ) : completed ? (
           <div className="w-5 h-5 rounded-full bg-white/30 flex items-center justify-center">
             <Check className="w-3.5 h-3.5" />
           </div>
-        )}
+        ) : null}
       </div>
     </button>
   );

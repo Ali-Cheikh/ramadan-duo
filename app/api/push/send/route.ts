@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
+import { applyRateLimit, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
 
 type SendPushBody = {
   toUserId: string;
   message: string;
 };
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const ipRate = applyRateLimit(`push:send:ip:${ip}`, 120, 60_000);
+  if (!ipRate.allowed) {
+    return rateLimitResponse(ipRate.retryAfterSec);
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -40,8 +50,27 @@ export async function POST(request: NextRequest) {
   const senderId = userResult.user.id;
   const body = (await request.json()) as SendPushBody;
 
+  const senderRate = applyRateLimit(`push:send:user:${senderId}`, 20, 60_000);
+  if (!senderRate.allowed) {
+    return rateLimitResponse(senderRate.retryAfterSec);
+  }
+
   if (!body?.toUserId || !body?.message) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  if (!UUID_REGEX.test(body.toUserId)) {
+    return NextResponse.json({ error: 'Invalid target user id' }, { status: 400 });
+  }
+
+  const pairRate = applyRateLimit(`push:send:pair:${senderId}:${body.toUserId}`, 5, 60_000);
+  if (!pairRate.allowed) {
+    return rateLimitResponse(pairRate.retryAfterSec);
+  }
+
+  const sanitizedMessage = body.message.trim();
+  if (!sanitizedMessage || sanitizedMessage.length > 280) {
+    return NextResponse.json({ error: 'Message must be 1-280 characters' }, { status: 400 });
   }
 
   // Get sender's username for personalized notification
@@ -83,7 +112,7 @@ export async function POST(request: NextRequest) {
   
   const payload = JSON.stringify({
     title: notificationTitle,
-    body: body.message,
+    body: sanitizedMessage,
     url: '/dashboard/friends',
     tag: 'nudge-notification',
     requireInteraction: false,

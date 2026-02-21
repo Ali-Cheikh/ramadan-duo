@@ -113,21 +113,21 @@ export function Leaderboard() {
     setLoading(true);
 
     if (timeFilter === 'today') {
-      // Load today's rankings from daily_logs
+      // Load today's rankings from daily_stats (aggregated and RLS-safe)
       const today = getTodayDate();
-      const { data: dailyLogs, error: logsError } = await supabase
-        .from('daily_logs')
-        .select('user_id, points_earned')
-        .eq('log_date', today)
-        .order('points_earned', { ascending: false });
+      const { data: dailyStats, error: statsError } = await supabase
+        .from('daily_stats')
+        .select('user_id, points')
+        .eq('date', today)
+        .order('points', { ascending: false });
 
-      if (logsError || !dailyLogs) {
+      if (statsError || !dailyStats) {
         setLoading(false);
         return;
       }
 
       // Get profiles for these users
-      const userIds = dailyLogs.map(log => log.user_id);
+      const userIds = dailyStats.map(stat => stat.user_id);
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
@@ -139,11 +139,11 @@ export function Leaderboard() {
       }
 
       // Combine data
-      const leaderboardData: LeaderboardEntry[] = dailyLogs.map((log, index) => {
-        const profile = profiles.find(p => p.id === log.user_id);
+      const leaderboardData: LeaderboardEntry[] = dailyStats.map((stat, index) => {
+        const profile = profiles.find(p => p.id === stat.user_id);
         return {
           profile: profile!,
-          points: log.points_earned || 0,
+          points: stat.points || 0,
           rank: index + 1,
         };
       }).filter(entry => entry.profile); // Filter out any missing profiles

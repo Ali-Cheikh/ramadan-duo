@@ -49,7 +49,6 @@ See [SETUP_GUIDE.md](./SETUP_GUIDE.md) for detailed instructions.
 ## Documentation
 
 - **[SETUP_GUIDE.md](./SETUP_GUIDE.md)** — How to deploy for your region, set regions/timezone
-- **[FEATURES_IMPLEMENTED.md](./FEATURES_IMPLEMENTED.md)** — Complete feature breakdown
 - **[CRON_SETUP.md](./CRON_SETUP.md)** — Retention reminder cron job setup
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Deployment checklist
 
@@ -89,6 +88,8 @@ VAPID_PUBLIC_KEY=your-vapid-public-key
 VAPID_PRIVATE_KEY=your-vapid-private-key
 VAPID_SUBJECT=mailto:your-email@domain.com
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+ADMIN_SECRET=your-admin-secret
+CRON_SECRET=your-cron-secret
 ```
 
 ### Database Migrations
@@ -101,12 +102,14 @@ Run these in order in your Supabase SQL Editor:
 4. `supabase/migrations/20260221_add_achievements_rpc.sql` (achievement logic)
 5. `supabase/migrations/20260221_add_rank_tracking.sql` (leaderboard tracking)
 6. `supabase/migrations/20260221_add_retention_reminders.sql` (retention system)
+7. `supabase/migrations/20260221021500_security_hardening_rls_indexes.sql` (RLS + indexes + anti-spam)
+8. `supabase/migrations/20260221025500_fix_leaderboard_policies_and_achievements.sql` (leaderboard + achievements RPC compatibility)
 
 ### Cron Job for Retention Reminders
 
 The retention reminder system requires a cron job to send scheduled notifications. See [CRON_SETUP.md](./CRON_SETUP.md) for detailed setup instructions.
 
-**Quick start:** Use [EasyCron](https://www.easycron.com) to POST to `/api/reminders/send` every 5 minutes.
+**Quick start:** Use [EasyCron](https://www.easycron.com) to POST to `/api/reminders/send` every 5 minutes with header `x-cron-secret: <CRON_SECRET>`.
 
 ## License
 

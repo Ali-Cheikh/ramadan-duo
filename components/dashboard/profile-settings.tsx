@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Copy, LogOut, Save } from 'lucide-react';
+import { Copy, LogOut, Save, Bell, BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AVATAR_COLORS = [
@@ -63,6 +63,7 @@ export function ProfileSettings() {
   const [displayName, setDisplayName] = useState('');
   const [region, setRegion] = useState('');
   const [avatarColor, setAvatarColor] = useState('#059669');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +87,7 @@ export function ProfileSettings() {
       setDisplayName(data.display_name);
       setRegion(data.region);
       setAvatarColor(data.avatar_color);
+      setNotificationsEnabled(data.notifications_enabled ?? true);
     }
     setLoading(false);
   };
@@ -101,6 +103,7 @@ export function ProfileSettings() {
         display_name: displayName,
         region: region,
         avatar_color: avatarColor,
+        notifications_enabled: notificationsEnabled,
       })
       .eq('id', user.id);
 
@@ -203,6 +206,34 @@ export function ProfileSettings() {
                   style={{ backgroundColor: color }}
                 />
               ))}
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {notificationsEnabled ? (
+                  <Bell className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <BellOff className="w-5 h-5 text-gray-400" />
+                )}
+                <div>
+                  <Label className="font-semibold">Daily Notifications</Label>
+                  <p className="text-xs text-gray-500">
+                    {notificationsEnabled
+                      ? '1 hourly + 1 evening reminder'
+                      : 'Notifications disabled'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant={notificationsEnabled ? 'default' : 'outline'}
+                onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                className={notificationsEnabled ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              >
+                {notificationsEnabled ? 'ON' : 'OFF'}
+              </Button>
             </div>
           </div>
 
